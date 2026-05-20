@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(\"E:\\\\Scripts\\\\python.exe\" -m pip install openai --target \"D:\\\\msys64\\\\ucrt64\\\\lib\\\\python3.12\\\\site-packages\")",
+      "Bash(pacman -S mingw-w64-ucrt-x86_64-python-pip)",
+      "Bash(where py *)",
+      "Bash(py *)"
+    ]
+  }
+}
