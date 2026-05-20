@@ -2,7 +2,7 @@ import os
 from openai import OpenAI
 
 client = OpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY", "sk-2a1248ad8a664821a2bd7d050de50bf1"),
+    api_key=os.getenv("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"),
     base_url="https://api.deepseek.com"
 )
 
@@ -25,7 +25,7 @@ def chat():
             messages.append({"role": "user", "content": user_input})
 
             response = client.chat.completions.create(
-                model="deepseek-chat",
+                model="deepseek-v4-flash",
                 messages=messages,
                 stream=True
             )
