@@ -1,26 +1,15 @@
-"""ReAct 智能体主循环
-
-模式: Thought → Action → Observation → Thought → ... → Final Answer
-"""
+"""常驻交互终端：ReAct 工具调用 + 会话管理 + 持久化存档"""
 
 import json
 from openai import OpenAI
 from config import DEEPSEEK_API_KEY
 from tools import read_file, list_files, run_shell
-from session import create_session, save_message
+from session import (
+    create_session, save_message, load_messages,
+    list_sessions, get_session, rename_session, delete_session,
+)
 
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
-
-
-def _clean(obj):
-    """递归清理消息中的 surrogate 字符"""
-    if isinstance(obj, str):
-        return obj.encode("utf-8", errors="replace").decode("utf-8")
-    if isinstance(obj, list):
-        return [_clean(item) for item in obj]
-    if isinstance(obj, dict):
-        return {key: _clean(value) for key, value in obj.items()}
-    return obj
 
 TOOLS = [
     {
@@ -91,47 +80,75 @@ SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下
 重要：当前系统是 Windows（不是 Linux/Mac），run_shell 中请使用 Windows 命令（dir、type、findstr 等），不要用 find、grep、xargs、wc 等 Linux 命令。"""
 
 
-def run(max_steps=20):
-    # 创建新会话
-    session_id = create_session("ReAct 任务")
-    print(f"会话: {session_id}")
-    print("=" * 50)
-    print("ReAct Agent 启动")
-    print("输入任务后，AI 会自动循环思考→行动→观察直到完成")
-    print("=" * 50)
+def _clean(obj):
+    """递归清理 surrogate 字符"""
+    if isinstance(obj, str):
+        return obj.encode("utf-8", errors="replace").decode("utf-8")
+    if isinstance(obj, list):
+        return [_clean(item) for item in obj]
+    if isinstance(obj, dict):
+        return {key: _clean(value) for key, value in obj.items()}
+    return obj
 
-    task = input("\n任务: ").strip()
-    if not task:
+
+def _show_sessions():
+    """打印历史会话列表"""
+    sessions = list_sessions()
+    if not sessions:
+        print("  (暂无历史会话)")
         return
+    for i, s in enumerate(sessions, 1):
+        print(f"  {i}. {s['title']}  [{s['message_count']}条]  {s['updated_at']}")
 
-    save_message(session_id, "user", task)
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": task},
-    ]
 
+def _pick_session():
+    """启动时选择会话"""
+    print("=" * 50)
+    print("bongo 智能助手")
+    print("=" * 50)
+
+    sessions = list_sessions()
+    if sessions:
+        print("\n历史会话：")
+        _show_sessions()
+
+    print("\n命令：")
+    print("  回车 → 创建新会话")
+    if sessions:
+        print("  输入编号 → 恢复该会话")
+    print()
+
+    choice = input("选择: ").strip()
+    if choice.isdigit() and sessions:
+        idx = int(choice) - 1
+        if 0 <= idx < len(sessions):
+            return sessions[idx]["id"]
+
+    # 创建新会话
+    sid = create_session()
+    print(f"\n创建新会话: {sid}")
+    return sid
+
+
+def _call_ai(messages):
+    """调 API，返回 message 对象"""
+    return client.chat.completions.create(
+        model="deepseek-v4-flash",
+        messages=_clean(messages),
+        tools=TOOLS,
+        stream=False,
+    ).choices[0].message
+
+
+def _handle_tool_calls(msg, messages, session_id, max_steps=15):
+    """ReAct 循环：反复调工具直到 AI 给出最终回答"""
     step = 0
     while step < max_steps:
         step += 1
-        print(f"\n--- Step {step} ---")
 
-        response = client.chat.completions.create(
-            model="deepseek-v4-flash",
-            messages=_clean(messages),
-            tools=TOOLS,
-            stream=False,
-        )
-
-        msg = response.choices[0].message
-
-        # 没有工具调用 → 认为任务完成
         if not msg.tool_calls:
-            content = msg.content or ""
-            save_message(session_id, "assistant", content)
-            print(f"\n[最终回答]\n{content}")
-            return
+            return msg.content or ""
 
-        # 处理工具调用
         messages.append(msg)
         for tc in msg.tool_calls:
             func_name = tc.function.name
@@ -140,7 +157,7 @@ def run(max_steps=20):
 
             func = FUNC_MAP.get(func_name)
             result = func(**func_args) if func else f"未知工具: {func_name}"
-            print(f"    结果: {result[:200]}")
+            print(f"    结果: {str(result)[:200]}")
 
             messages.append({
                 "role": "tool",
@@ -148,8 +165,68 @@ def run(max_steps=20):
                 "content": str(result).encode("utf-8", errors="replace").decode("utf-8"),
             })
 
-    print(f"\n达到最大步骤数 ({max_steps})，强制停止")
+        msg = _call_ai(messages)
+
+    return msg.content or "(达到最大步骤数)"
+
+
+def chat_loop(session_id):
+    """常驻聊天循环"""
+    history = load_messages(session_id)
+
+    # 构建 messages：系统指令 + 历史消息
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for m in history:
+        messages.append({"role": m["role"], "content": m["content"]})
+
+    print(f"\n进入会话（输入 exit 退出，输入 new 切换会话）\n")
+
+    while True:
+        try:
+            user_input = input("你: ")
+            cmd = user_input.strip().lower()
+
+            if cmd in ("exit", "quit"):
+                print("再见！")
+                break
+            if cmd == "new":
+                return "switch"
+            if cmd == "list":
+                _show_sessions()
+                continue
+            if not cmd:
+                continue
+
+            # 保存用户消息
+            save_message(session_id, "user", user_input)
+            messages.append({"role": "user", "content": user_input})
+
+            # AI 响应
+            print("AI: ", end="", flush=True)
+            msg = _call_ai(messages)
+
+            if msg.tool_calls:
+                full_reply = _handle_tool_calls(msg, messages, session_id)
+            else:
+                full_reply = msg.content or ""
+
+            print(f"  {full_reply}")
+            save_message(session_id, "assistant", full_reply)
+            messages.append({"role": "assistant", "content": full_reply})
+
+        except KeyboardInterrupt:
+            print("\n再见！")
+            break
+
+
+def main():
+    while True:
+        session_id = _pick_session()
+        result = chat_loop(session_id)
+        if result != "switch":
+            break
+        print()
 
 
 if __name__ == "__main__":
-    run()
+    main()
