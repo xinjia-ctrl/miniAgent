@@ -1,11 +1,14 @@
 # tools.py - 阶段一
 # 工具函数：AI 通过调用这些函数来操作你的电脑
 
+import locale
 import subprocess
 from pathlib import Path
 
 # 工作区根目录：所有文件操作都被限定在这个目录下
 ROOT = Path.cwd().resolve()
+# 使用系统编码（Windows 上通常是 gbk）
+_ENCODING = locale.getpreferredencoding()
 
 def _check_path(path):
     """安全校验：确保路径不逃逸出工作区
@@ -51,7 +54,7 @@ def run_shell(command, timeout=20):
             shell=True,
             capture_output=True,
             text=True,
-            encoding="utf-8",
+            encoding=_ENCODING,
             errors="replace",
             timeout=timeout,
             cwd=ROOT,

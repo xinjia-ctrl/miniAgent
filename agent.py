@@ -64,7 +64,7 @@ FUNC_MAP = {
 
 def chat():
     messages = [
-        {"role": "system", "content": "你是一个智能 AI 助手，可以调用工具来操作电脑。请用中文回答问题。"}
+        {"role": "system", "content": "你是一个智能 AI 助手，可以调用工具来操作电脑。请用中文回答问题。\n注意：当前系统是 Windows（不是 Linux/Mac），run_shell 中请使用 Windows 命令（dir、type、findstr 等），不要用 find、grep、xargs 等 Linux 命令。"}
     ]
     print("DeepSeek Agent 已启动（输入 exit 退出）\n")
 

@@ -75,7 +75,8 @@ SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下
 3. 观察工具返回的结果（Observation）
 4. 重复直到任务完成，然后给出最终答案
 
-注意：你可以连续多次调用工具，不需要一次只调一个。"""
+注意：你可以连续多次调用工具，不需要一次只调一个。
+重要：当前系统是 Windows（不是 Linux/Mac），run_shell 中请使用 Windows 命令（dir、type、findstr 等），不要用 find、grep、xargs、wc 等 Linux 命令。"""
 
 
 def run(max_steps=20):
