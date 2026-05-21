@@ -7,7 +7,6 @@ import hashlib
 import json
 from pathlib import Path
 
-# 使用系统编码（Windows 上通常是 gbk）
 _ENCODING = locale.getpreferredencoding()
 
 # 项目文档白名单（这些文档会自动注入 prompt）
@@ -31,10 +30,9 @@ class WorkspaceContext:
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
-                cwd=self.cwd, capture_output=True, text=True,
-                encoding=_ENCODING, errors="replace", timeout=5,
+                cwd=self.cwd, capture_output=True, timeout=5,
             )
-            return Path(result.stdout.strip()).resolve()
+            return Path(result.stdout.decode("utf-8", errors="replace").strip()).resolve()
         except Exception:
             return self.cwd
 
@@ -43,10 +41,16 @@ class WorkspaceContext:
         try:
             result = subprocess.run(
                 ["git"] + args, cwd=self.cwd,
-                capture_output=True, text=True,
-                encoding=_ENCODING, errors="replace", timeout=5,
+                capture_output=True, timeout=5,
             )
-            return result.stdout.strip()
+            raw = result.stdout
+            # git 输出可能是 GBK 或 UTF-8，自动检测
+            if raw:
+                try:
+                    return raw.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    return raw.decode(_ENCODING, errors="replace").strip()
+            return ""
         except Exception:
             return ""
 

@@ -15,9 +15,11 @@ from workspace import get_context
 
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-# Windows 终端编码兼容
+# Windows 终端编码兼容（强制 UTF-8 输出）
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+elif hasattr(sys, "stdout"):
+    sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", errors="replace", closefd=False)
 
 TOOLS = [
     {
