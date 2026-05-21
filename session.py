@@ -126,7 +126,7 @@ if __name__ == "__main__":
     sid = create_session("测试会话")
     print(f"创建会话: {sid}")
     save_message(sid, "user", "你好")
-    save_message(sid, "assistant", "你好！我是 bongo")
+    save_message(sid, "assistant", "你好！我是 miniAgent")
     save_message(sid, "user", "今天天气怎么样")
     save_message(sid, "assistant", "我是本地助手，无法查天气")
     print(f"消息数: {len(load_messages(sid))}")

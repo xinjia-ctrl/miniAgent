@@ -80,6 +80,52 @@ SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下
 重要：当前系统是 Windows（不是 Linux/Mac），run_shell 中请使用 Windows 命令（dir、type、findstr 等），不要用 find、grep、xargs、wc 等 Linux 命令。"""
 
 
+def _parse_repl(text):
+    """解析 REPL 指令，返回 (工具名, 参数字典) 或 None"""
+    text = text.strip()
+    if not text:
+        return None
+
+    # !command → run_shell
+    if text.startswith("!"):
+        return ("run_shell", {"command": text[1:].strip()})
+
+    # 精确匹配前几个工具名
+    parts = text.split(maxsplit=1)
+    name = parts[0].lower()
+    rest = parts[1] if len(parts) > 1 else ""
+
+    if name == "read_file":
+        tokens = rest.split()
+        path = tokens[0] if tokens else ""
+        start = int(tokens[1]) if len(tokens) > 1 else 1
+        end = int(tokens[2]) if len(tokens) > 2 else 200
+        return ("read_file", {"path": path, "start": start, "end": end})
+
+    if name == "list_files":
+        return ("list_files", {"path": rest or "."})
+
+    if name == "run_shell":
+        return ("run_shell", {"command": rest})
+
+    return None
+
+
+def _exec_direct(name, args):
+    """直接执行工具并打印结果"""
+    func = FUNC_MAP.get(name)
+    if not func:
+        print(f"未知工具: {name}")
+        return ""
+    try:
+        result = func(**args)
+        print(str(result))
+        return str(result)
+    except Exception as e:
+        print(f"错误: {e}")
+        return str(e)
+
+
 def _clean(obj):
     """递归清理 surrogate 字符"""
     if isinstance(obj, str):
@@ -104,7 +150,7 @@ def _show_sessions():
 def _pick_session():
     """启动时选择会话"""
     print("=" * 50)
-    print("bongo 智能助手")
+    print("miniAgent 智能助手")
     print("=" * 50)
 
     sessions = list_sessions()
@@ -197,11 +243,18 @@ def chat_loop(session_id):
             if not cmd:
                 continue
 
-            # 保存用户消息
+            # REPL 直执行：!command 或 工具名 参数
+            repl = _parse_repl(user_input)
+            if repl:
+                result = _exec_direct(*repl)
+                save_message(session_id, "user", user_input)
+                save_message(session_id, "assistant", result)
+                continue
+
+            # 走 AI
             save_message(session_id, "user", user_input)
             messages.append({"role": "user", "content": user_input})
 
-            # AI 响应
             print("AI: ", end="", flush=True)
             msg = _call_ai(messages)
 
@@ -210,7 +263,7 @@ def chat_loop(session_id):
             else:
                 full_reply = msg.content or ""
 
-            print(f"  {full_reply}")
+            print(full_reply)
             save_message(session_id, "assistant", full_reply)
             messages.append({"role": "assistant", "content": full_reply})
 

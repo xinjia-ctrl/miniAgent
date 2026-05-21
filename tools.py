@@ -13,7 +13,7 @@ _ENCODING = locale.getpreferredencoding()
 def _check_path(path):
     """安全校验：确保路径不逃逸出工作区
 
-    这是 bongo 最重要的安全机制之一。
+    这是 miniAgent 最重要的安全机制之一。
     如果 AI 试图读 /etc/passwd 或 ../secret.txt，这里会拦截。
     """
     p = Path(str(path))
