@@ -3,15 +3,12 @@
 模式: Thought → Action → Observation → Thought → ... → Final Answer
 """
 
-import os
 import json
 from openai import OpenAI
+from config import DEEPSEEK_API_KEY
 from tools import read_file, list_files, run_shell
 
-client = OpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com"
-)
+client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 TOOLS = [
     {
