@@ -8,6 +8,7 @@ from session import (
     create_session, save_message, load_messages,
     list_sessions, get_session, rename_session, delete_session,
 )
+from context import trim_messages
 
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
@@ -178,6 +179,7 @@ def _pick_session():
 
 def _call_ai(messages):
     """调 API，返回 message 对象"""
+    messages = trim_messages(messages)
     return client.chat.completions.create(
         model="deepseek-v4-flash",
         messages=_clean(messages),
