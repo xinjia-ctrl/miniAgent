@@ -10,7 +10,7 @@ from session import (
 )
 from context import trim_messages
 from memory import remember, forget as forget_memory, build_memory_block
-from workspace import info as workspace_info, init as workspace_init
+from workspace import get_context
 
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
@@ -196,13 +196,14 @@ def _show_sessions():
 
 def _pick_session():
     """启动时选择会话"""
-    # 初始化工作区
-    ws = workspace_init()
-    wi = workspace_info()
+    ws = get_context()
+    fp = ws.fingerprint()
 
     print("=" * 50)
-    print(f"miniAgent 智能助手  |  {wi['name']}")
-    print(f"工作区: {wi['root']}  |  {wi['python_files']} 个 Python 文件, {wi['total_lines']} 行")
+    print(f"miniAgent 智能助手  |  {ws.repo_root.name}")
+    print(f"分支: {ws.branch}  |  未提交: {'有' if ws.status != 'clean' else '无'}")
+    if ws.recent_commits:
+        print(f"最新: {ws.recent_commits[0]}")
     print("=" * 50)
 
     sessions = list_sessions()
@@ -273,9 +274,12 @@ def chat_loop(session_id):
     """常驻聊天循环"""
     history = load_messages(session_id)
 
-    # 构建 messages：系统指令（含记忆）+ 历史消息
+    # 构建 messages：系统指令（含记忆 + 工作区快照）+ 历史消息
+    ws = get_context()
+    ws_text = ws.text()
     mem_block = build_memory_block()
-    sys_content = SYSTEM_PROMPT + ("\n\n" + mem_block if mem_block else "")
+    extra = "\n\n".join(filter(None, [ws_text, mem_block]))
+    sys_content = SYSTEM_PROMPT + ("\n\n" + extra if extra else "")
     messages = [{"role": "system", "content": sys_content}]
     for m in history:
         messages.append({"role": m["role"], "content": m["content"]})
