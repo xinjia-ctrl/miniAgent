@@ -4,7 +4,11 @@ import sys
 import json
 from models import create_backend
 from config import BACKEND
-from tools import read_file, list_files, run_shell
+from tools import (
+    read_file, list_files, run_shell,
+    write_file, replace_in_file, apply_patch,
+    git_status, git_diff,
+)
 from session import (
     create_session, save_message, load_messages,
     list_sessions, get_session, rename_session, delete_session,
@@ -56,7 +60,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "run_shell",
-            "description": "执行 shell 命令",
+            "description": "执行 shell 命令。危险命令会要求用户确认，优先使用专用文件和 Git 工具。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -64,6 +68,93 @@ TOOLS = [
                     "timeout": {"type": "integer", "description": "超时秒数", "default": 20},
                 },
                 "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "写入文件。默认不覆盖已有文件，适合创建新文件；覆盖时必须显式设置 overwrite=true。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "工作区内文件路径"},
+                    "content": {"type": "string", "description": "完整文件内容"},
+                    "overwrite": {"type": "boolean", "description": "是否允许覆盖已有文件", "default": False},
+                    "create_dirs": {"type": "boolean", "description": "父目录不存在时是否创建", "default": False},
+                },
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "replace_in_file",
+            "description": "在文件中做精确文本替换。默认要求 old_text 只出现一次，避免误替换。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "工作区内文件路径"},
+                    "old_text": {"type": "string", "description": "要替换的原文"},
+                    "new_text": {"type": "string", "description": "替换后的文本"},
+                    "expected_replacements": {"type": "integer", "description": "期望替换次数，默认 1", "default": 1},
+                },
+                "required": ["path", "old_text", "new_text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "apply_patch",
+            "description": "批量应用多个精确文本替换补丁；任一补丁校验失败时不会修改任何文件。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patches": {
+                        "type": "array",
+                        "description": "补丁列表",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "工作区内文件路径"},
+                                "old_text": {"type": "string", "description": "要替换的原文"},
+                                "new_text": {"type": "string", "description": "替换后的文本"},
+                                "expected_replacements": {"type": "integer", "description": "期望替换次数，默认 1", "default": 1},
+                            },
+                            "required": ["path", "old_text", "new_text"],
+                        },
+                    },
+                },
+                "required": ["patches"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_status",
+            "description": "查看当前 Git 工作区状态",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_diff",
+            "description": "查看未暂存 diff，可选传入 path 限制到单个文件或目录",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "可选，工作区内路径"},
+                },
+                "required": [],
             },
         },
     },
@@ -103,6 +194,11 @@ FUNC_MAP = {
     "read_file": read_file,
     "list_files": list_files,
     "run_shell": run_shell,
+    "write_file": write_file,
+    "replace_in_file": replace_in_file,
+    "apply_patch": apply_patch,
+    "git_status": git_status,
+    "git_diff": git_diff,
     "remember": remember,
     "forget_memory": forget_memory,
 }
@@ -111,6 +207,11 @@ SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下
 - read_file: 读取文件
 - list_files: 列出目录
 - run_shell: 执行 shell 命令
+- write_file: 创建或覆盖文件
+- replace_in_file: 精确替换文件片段
+- apply_patch: 批量应用精确替换补丁
+- git_status: 查看 Git 状态
+- git_diff: 查看未暂存 diff
 - remember: 记住信息（跨会话保留，对话结束也不会丢）
 - forget_memory: 删除已记住的信息
 
@@ -121,7 +222,10 @@ SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下
 4. 重复直到任务完成，然后给出最终答案
 
 注意：你可以连续多次调用工具，不需要一次只调一个。
-重要：当前系统是 Windows（不是 Linux/Mac），run_shell 中请使用 Windows 命令（dir、type、findstr 等），不要用 find、grep、xargs、wc 等 Linux 命令。"""
+重要：
+- 当前系统是 Windows（不是 Linux/Mac），run_shell 中请使用 Windows 命令（dir、type、findstr 等），不要用 find、grep、xargs、wc 等 Linux 命令。
+- 修改文件时优先使用 replace_in_file 或 apply_patch，创建文件时使用 write_file。
+- 修改后请用 git_diff 检查变更。"""
 
 
 def _parse_repl(text):
@@ -151,6 +255,12 @@ def _parse_repl(text):
 
     if name == "run_shell":
         return ("run_shell", {"command": rest})
+
+    if name == "git_status":
+        return ("git_status", {})
+
+    if name == "git_diff":
+        return ("git_diff", {"path": rest.strip() or None})
 
     if name == "remember":
         # remember tag content
@@ -293,11 +403,29 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
         })
         for tc in msg.tool_calls:
             func_name = tc.name
-            func_args = json.loads(tc.arguments)
+            try:
+                func_args = json.loads(tc.arguments or "{}")
+            except json.JSONDecodeError as e:
+                result = f"工具参数 JSON 解析失败: {e}"
+                print(f"  → {func_name}(参数解析失败)")
+                print(f"    结果: {result}")
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result,
+                })
+                continue
+
             print(f"  → {func_name}({json.dumps(func_args, ensure_ascii=False)})")
 
             func = FUNC_MAP.get(func_name)
-            result = func(**func_args) if func else f"未知工具: {func_name}"
+            if not func:
+                result = f"未知工具: {func_name}"
+            else:
+                try:
+                    result = func(**func_args)
+                except Exception as e:
+                    result = f"工具执行失败: {type(e).__name__}: {e}"
             print(f"    结果: {str(result)[:200]}")
 
             messages.append({
