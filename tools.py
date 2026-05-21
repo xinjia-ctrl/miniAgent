@@ -3,6 +3,7 @@
 
 import locale
 import subprocess
+from pathlib import Path
 
 from workspace import ROOT
 # 使用系统编码（Windows 上通常是 gbk）

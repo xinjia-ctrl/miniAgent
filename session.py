@@ -5,8 +5,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-# 会话存储目录
-SESSION_DIR = Path(__file__).parent / "sessions"
+# 会话存储目录（基于当前工作目录，按项目隔离）
+SESSION_DIR = Path.cwd() / ".mini" / "sessions"
 
 
 def _session_path(session_id: str) -> Path:

@@ -4,5 +4,5 @@ __pycache__/
 venv/
 .venv/
 local_config.py
-sessions/
-memory/
+.mini/sessions/
+.mini/memory/

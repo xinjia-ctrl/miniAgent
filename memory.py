@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-MEMORY_DIR = Path(__file__).parent / "memory"
+MEMORY_DIR = Path.cwd() / ".mini" / "memory"
 
 
 def _now():
