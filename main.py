@@ -203,7 +203,7 @@ def _pick_session():
     print(f"miniAgent 智能助手  |  {ws.repo_root.name}")
     print(f"分支: {ws.branch}  |  未提交: {'有' if ws.status != 'clean' else '无'}")
     if ws.recent_commits:
-        print(f"最新: {ws.recent_commits[0]}")
+        print(f"最新: {_clean(ws.recent_commits[0])}")
     print("=" * 50)
 
     sessions = list_sessions()
