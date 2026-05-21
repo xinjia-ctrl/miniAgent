@@ -7,8 +7,20 @@ import json
 from openai import OpenAI
 from config import DEEPSEEK_API_KEY
 from tools import read_file, list_files, run_shell
+from session import create_session, save_message
 
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+
+
+def _clean(obj):
+    """递归清理消息中的 surrogate 字符"""
+    if isinstance(obj, str):
+        return obj.encode("utf-8", errors="replace").decode("utf-8")
+    if isinstance(obj, list):
+        return [_clean(item) for item in obj]
+    if isinstance(obj, dict):
+        return {key: _clean(value) for key, value in obj.items()}
+    return obj
 
 TOOLS = [
     {
@@ -80,6 +92,9 @@ SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下
 
 
 def run(max_steps=20):
+    # 创建新会话
+    session_id = create_session("ReAct 任务")
+    print(f"会话: {session_id}")
     print("=" * 50)
     print("ReAct Agent 启动")
     print("输入任务后，AI 会自动循环思考→行动→观察直到完成")
@@ -89,6 +104,7 @@ def run(max_steps=20):
     if not task:
         return
 
+    save_message(session_id, "user", task)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": task},
@@ -101,7 +117,7 @@ def run(max_steps=20):
 
         response = client.chat.completions.create(
             model="deepseek-v4-flash",
-            messages=messages,
+            messages=_clean(messages),
             tools=TOOLS,
             stream=False,
         )
@@ -110,7 +126,9 @@ def run(max_steps=20):
 
         # 没有工具调用 → 认为任务完成
         if not msg.tool_calls:
-            print(f"\n[最终回答]\n{msg.content}")
+            content = msg.content or ""
+            save_message(session_id, "assistant", content)
+            print(f"\n[最终回答]\n{content}")
             return
 
         # 处理工具调用
@@ -127,7 +145,7 @@ def run(max_steps=20):
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": str(result),
+                "content": str(result).encode("utf-8", errors="replace").decode("utf-8"),
             })
 
     print(f"\n达到最大步骤数 ({max_steps})，强制停止")

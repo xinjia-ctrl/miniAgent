@@ -17,6 +17,11 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _clean(text: str) -> str:
+    """移除 surrogate 字符，避免 JSON 写入时报错"""
+    return text.encode("utf-8", errors="replace").decode("utf-8")
+
+
 def list_sessions() -> list[dict]:
     """列出所有历史会话，按时间倒序"""
     if not SESSION_DIR.exists():
@@ -63,7 +68,7 @@ def save_message(session_id: str, role: str, content: str) -> None:
     data = json.loads(path.read_text(encoding="utf-8"))
     data["messages"].append({
         "role": role,
-        "content": content,
+        "content": _clean(content),
         "timestamp": _now(),
     })
     data["updated_at"] = _now()
