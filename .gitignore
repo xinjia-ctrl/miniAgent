@@ -5,3 +5,4 @@ venv/
 .venv/
 local_config.py
 sessions/
+memory/

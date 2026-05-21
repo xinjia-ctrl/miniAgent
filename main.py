@@ -9,6 +9,8 @@ from session import (
     list_sessions, get_session, rename_session, delete_session,
 )
 from context import trim_messages
+from memory import remember, forget as forget_memory, build_memory_block
+from workspace import info as workspace_info, init as workspace_init
 
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
@@ -58,18 +60,52 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "remember",
+            "description": "记住一条信息（持久化，跨会话保留）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tag": {"type": "string", "description": "分类标签，如 用户偏好、项目信息、问题记录"},
+                    "content": {"type": "string", "description": "要记住的内容"},
+                    "importance": {"type": "integer", "description": "重要性 1-5，越高越优先保留", "default": 1},
+                },
+                "required": ["tag", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget_memory",
+            "description": "删除一条已记住的信息",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mem_id": {"type": "string", "description": "记忆 ID"},
+                },
+                "required": ["mem_id"],
+            },
+        },
+    },
 ]
 
 FUNC_MAP = {
     "read_file": read_file,
     "list_files": list_files,
     "run_shell": run_shell,
+    "remember": remember,
+    "forget_memory": forget_memory,
 }
 
 SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下能力：
 - read_file: 读取文件
 - list_files: 列出目录
 - run_shell: 执行 shell 命令
+- remember: 记住信息（跨会话保留，对话结束也不会丢）
+- forget_memory: 删除已记住的信息
 
 请按 ReAct 模式工作：
 1. 思考当前任务需要做什么（Thought）
@@ -108,6 +144,16 @@ def _parse_repl(text):
 
     if name == "run_shell":
         return ("run_shell", {"command": rest})
+
+    if name == "remember":
+        # remember tag content
+        tokens = rest.split(maxsplit=1)
+        tag = tokens[0] if tokens else ""
+        content = tokens[1] if len(tokens) > 1 else ""
+        return ("remember", {"tag": tag, "content": content, "importance": 3})
+
+    if name == "forget_memory":
+        return ("forget_memory", {"mem_id": rest.strip()})
 
     return None
 
@@ -150,8 +196,13 @@ def _show_sessions():
 
 def _pick_session():
     """启动时选择会话"""
+    # 初始化工作区
+    ws = workspace_init()
+    wi = workspace_info()
+
     print("=" * 50)
-    print("miniAgent 智能助手")
+    print(f"miniAgent 智能助手  |  {wi['name']}")
+    print(f"工作区: {wi['root']}  |  {wi['python_files']} 个 Python 文件, {wi['total_lines']} 行")
     print("=" * 50)
 
     sessions = list_sessions()
@@ -222,8 +273,10 @@ def chat_loop(session_id):
     """常驻聊天循环"""
     history = load_messages(session_id)
 
-    # 构建 messages：系统指令 + 历史消息
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # 构建 messages：系统指令（含记忆）+ 历史消息
+    mem_block = build_memory_block()
+    sys_content = SYSTEM_PROMPT + ("\n\n" + mem_block if mem_block else "")
+    messages = [{"role": "system", "content": sys_content}]
     for m in history:
         messages.append({"role": m["role"], "content": m["content"]})
 

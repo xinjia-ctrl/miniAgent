@@ -3,10 +3,8 @@
 
 import locale
 import subprocess
-from pathlib import Path
 
-# 工作区根目录：所有文件操作都被限定在这个目录下
-ROOT = Path.cwd().resolve()
+from workspace import ROOT
 # 使用系统编码（Windows 上通常是 gbk）
 _ENCODING = locale.getpreferredencoding()
 
