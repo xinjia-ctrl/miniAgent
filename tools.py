@@ -45,12 +45,21 @@ def list_files(path="."):
 
 def run_shell(command, timeout=20):
     """执行 shell 命令（危险的！）"""
-    result = subprocess.run(
-        command,
-        shell=True,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        cwd=ROOT,
-    )
-    return f"exit_code: {result.returncode}\nstdout:\n{result.stdout.strip()}\nstderr:\n{result.stderr.strip()}"
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            cwd=ROOT,
+        )
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        return f"exit_code: {result.returncode}\nstdout:\n{stdout.strip()}\nstderr:\n{stderr.strip()}"
+    except subprocess.TimeoutExpired:
+        return f"exit_code: -1\nstdout:\n\nstderr:\n命令超时 ({timeout}s)"
+    except Exception as e:
+        return f"exit_code: -1\nstdout:\n\nstderr:\n{str(e)}"
