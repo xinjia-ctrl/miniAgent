@@ -371,8 +371,51 @@ def _print_header(session_id=None):
     print("+" + "=" * W + "+")
 
 
+def _build_system_content():
+    """构建最新 system prompt：包含工作区快照和记忆"""
+    ws = get_context()
+    ws.refresh()
+    ws_text = ws.text()
+    mem_block = build_memory_block()
+    extra = "\n\n".join(filter(None, [ws_text, mem_block]))
+    return SYSTEM_PROMPT + ("\n\n" + extra if extra else "")
+
+
+def _refresh_system_message(messages):
+    """每轮请求前刷新 system 消息，避免 Git 状态和项目文档过期"""
+    content = _build_system_content()
+    if messages and messages[0].get("role") == "system":
+        messages[0]["content"] = content
+    else:
+        messages.insert(0, {"role": "system", "content": content})
+
+
+def _history_to_message(item):
+    """会话存档消息转换为 API 消息，兼容旧版纯文本格式"""
+    msg = {
+        "role": item.get("role", "assistant"),
+        "content": item.get("content", ""),
+    }
+    if item.get("tool_calls"):
+        msg["tool_calls"] = item["tool_calls"]
+    if item.get("tool_call_id"):
+        msg["tool_call_id"] = item["tool_call_id"]
+    if item.get("reasoning_content"):
+        msg["reasoning_content"] = item["reasoning_content"]
+    return msg
+
+
+def _assistant_extra(msg):
+    """提取需要回传给模型的 assistant 扩展字段"""
+    extra = {}
+    if getattr(msg, "reasoning_content", None):
+        extra["reasoning_content"] = msg.reasoning_content
+    return extra
+
+
 def _call_ai(messages):
     """调 API，返回 AssistantMessage"""
+    _refresh_system_message(messages)
     messages = trim_messages(messages)
     return backend.chat(messages, tools=TOOLS)
 
@@ -384,9 +427,9 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
         step += 1
 
         if not msg.tool_calls:
-            return msg.content or ""
+            return msg.content or "", _assistant_extra(msg)
 
-        messages.append({
+        assistant_msg = {
             "role": "assistant",
             "content": msg.content,
             "tool_calls": [
@@ -400,7 +443,18 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
                 }
                 for tc in msg.tool_calls
             ],
-        })
+        }
+        if msg.reasoning_content:
+            assistant_msg["reasoning_content"] = msg.reasoning_content
+        messages.append(assistant_msg)
+        save_message(
+            session_id,
+            "assistant",
+            msg.content or "",
+            tool_calls=assistant_msg["tool_calls"],
+            reasoning_content=assistant_msg.get("reasoning_content"),
+        )
+
         for tc in msg.tool_calls:
             func_name = tc.name
             try:
@@ -409,11 +463,19 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
                 result = f"工具参数 JSON 解析失败: {e}"
                 print(f"  → {func_name}(参数解析失败)")
                 print(f"    结果: {result}")
-                messages.append({
+                tool_msg = {
                     "role": "tool",
                     "tool_call_id": tc.id,
                     "content": result,
-                })
+                }
+                messages.append(tool_msg)
+                save_message(
+                    session_id,
+                    "tool",
+                    result,
+                    tool_call_id=tc.id,
+                    name=func_name,
+                )
                 continue
 
             print(f"  → {func_name}({json.dumps(func_args, ensure_ascii=False)})")
@@ -428,15 +490,24 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
                     result = f"工具执行失败: {type(e).__name__}: {e}"
             print(f"    结果: {str(result)[:200]}")
 
-            messages.append({
+            tool_content = str(result).encode("utf-8", errors="replace").decode("utf-8")
+            tool_msg = {
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": str(result).encode("utf-8", errors="replace").decode("utf-8"),
-            })
+                "content": tool_content,
+            }
+            messages.append(tool_msg)
+            save_message(
+                session_id,
+                "tool",
+                tool_content,
+                tool_call_id=tc.id,
+                name=func_name,
+            )
 
         msg = _call_ai(messages)
 
-    return msg.content or "(达到最大步骤数)"
+    return msg.content or "(达到最大步骤数)", _assistant_extra(msg)
 
 
 def chat_loop(session_id):
@@ -444,14 +515,10 @@ def chat_loop(session_id):
     history = load_messages(session_id)
 
     # 构建 messages：系统指令（含记忆 + 工作区快照）+ 历史消息
-    ws = get_context()
-    ws_text = ws.text()
-    mem_block = build_memory_block()
-    extra = "\n\n".join(filter(None, [ws_text, mem_block]))
-    sys_content = SYSTEM_PROMPT + ("\n\n" + extra if extra else "")
+    sys_content = _build_system_content()
     messages = [{"role": "system", "content": sys_content}]
     for m in history:
-        messages.append({"role": m["role"], "content": m["content"]})
+        messages.append(_history_to_message(m))
 
     print(f"\n进入会话（输入 exit 退出，输入 new 切换会话）\n")
 
@@ -466,6 +533,7 @@ def chat_loop(session_id):
             if cmd == "new":
                 session_id = create_session()
                 print("\n--- 新会话 ---")
+                sys_content = _build_system_content()
                 messages = [{"role": "system", "content": sys_content}]
                 continue
             if cmd == "list":
@@ -490,13 +558,16 @@ def chat_loop(session_id):
             msg = _call_ai(messages)
 
             if msg.tool_calls:
-                full_reply = _handle_tool_calls(msg, messages, session_id)
+                full_reply, assistant_extra = _handle_tool_calls(msg, messages, session_id)
             else:
                 full_reply = msg.content or ""
+                assistant_extra = _assistant_extra(msg)
 
             print(full_reply)
-            save_message(session_id, "assistant", full_reply)
-            messages.append({"role": "assistant", "content": full_reply})
+            save_message(session_id, "assistant", full_reply, **assistant_extra)
+            assistant_msg = {"role": "assistant", "content": full_reply}
+            assistant_msg.update(assistant_extra)
+            messages.append(assistant_msg)
 
         except KeyboardInterrupt:
             print("\n再见！")

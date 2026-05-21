@@ -25,6 +25,7 @@ class AssistantMessage:
     """标准化的助手响应"""
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
+    reasoning_content: str | None = None
 
 
 # ===================================================================
@@ -99,7 +100,11 @@ class OpenAIClient(BaseClient):
                 for tc in msg.tool_calls
             ]
 
-        return AssistantMessage(content=msg.content, tool_calls=tool_calls)
+        return AssistantMessage(
+            content=msg.content,
+            tool_calls=tool_calls,
+            reasoning_content=_get_reasoning_content(msg),
+        )
 
 
 # ===================================================================
@@ -265,7 +270,22 @@ class OllamaClient(BaseClient):
                 for tc in msg.tool_calls
             ]
 
-        return AssistantMessage(content=msg.content, tool_calls=tool_calls)
+        return AssistantMessage(
+            content=msg.content,
+            tool_calls=tool_calls,
+            reasoning_content=_get_reasoning_content(msg),
+        )
+
+
+def _get_reasoning_content(message) -> str | None:
+    """兼容 DeepSeek 等 OpenAI-compatible 接口返回的 reasoning_content"""
+    value = getattr(message, "reasoning_content", None)
+    if value:
+        return value
+
+    model_extra = getattr(message, "model_extra", None) or {}
+    value = model_extra.get("reasoning_content")
+    return value or None
 
 
 # ===================================================================

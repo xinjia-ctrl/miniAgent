@@ -17,9 +17,15 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _clean(text: str) -> str:
-    """移除 surrogate 字符，避免 JSON 写入时报错"""
-    return text.encode("utf-8", errors="replace").decode("utf-8")
+def _clean_obj(obj):
+    """递归移除 surrogate 字符，避免 JSON 写入时报错"""
+    if isinstance(obj, str):
+        return obj.encode("utf-8", errors="replace").decode("utf-8")
+    if isinstance(obj, list):
+        return [_clean_obj(item) for item in obj]
+    if isinstance(obj, dict):
+        return {key: _clean_obj(value) for key, value in obj.items()}
+    return obj
 
 
 def list_sessions() -> list[dict]:
@@ -59,18 +65,23 @@ def create_session(title: str = "新会话") -> str:
     return session_id
 
 
-def save_message(session_id: str, role: str, content: str) -> None:
-    """保存一条消息到会话"""
+def save_message(session_id: str, role: str, content: str = "", **extra) -> None:
+    """保存一条消息到会话，支持 tool_calls/tool_call_id 等结构化字段"""
     path = _session_path(session_id)
     if not path.exists():
         raise FileNotFoundError(f"会话不存在: {session_id}")
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    data["messages"].append({
+    message = {
         "role": role,
-        "content": _clean(content),
+        "content": _clean_obj(content or ""),
         "timestamp": _now(),
-    })
+    }
+    for key, value in extra.items():
+        if value is not None:
+            message[key] = _clean_obj(value)
+
+    data["messages"].append(message)
     data["updated_at"] = _now()
     # 自动用第一条用户消息当标题
     if data["title"] == "新会话" and role == "user":
