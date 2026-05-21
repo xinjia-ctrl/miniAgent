@@ -1,10 +1,14 @@
 # workspace.py - 阶段七
 # 工作区快照：采集仓库状态并计算指纹
 
+import locale
 import subprocess
 import hashlib
 import json
 from pathlib import Path
+
+# 使用系统编码（Windows 上通常是 gbk）
+_ENCODING = locale.getpreferredencoding()
 
 # 项目文档白名单（这些文档会自动注入 prompt）
 DOC_NAMES = ("README.md", "pyproject.toml", "AGENTS.md")
@@ -27,7 +31,8 @@ class WorkspaceContext:
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
-                cwd=self.cwd, capture_output=True, text=True, timeout=5,
+                cwd=self.cwd, capture_output=True, text=True,
+                encoding=_ENCODING, errors="replace", timeout=5,
             )
             return Path(result.stdout.strip()).resolve()
         except Exception:
@@ -38,7 +43,8 @@ class WorkspaceContext:
         try:
             result = subprocess.run(
                 ["git"] + args, cwd=self.cwd,
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True,
+                encoding=_ENCODING, errors="replace", timeout=5,
             )
             return result.stdout.strip()
         except Exception:
