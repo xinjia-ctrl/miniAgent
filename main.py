@@ -1,5 +1,6 @@
 """常驻交互终端：ReAct 工具调用 + 会话管理 + 持久化存档"""
 
+import sys
 import json
 from openai import OpenAI
 from config import DEEPSEEK_API_KEY
@@ -13,6 +14,10 @@ from memory import remember, forget as forget_memory, build_memory_block
 from workspace import get_context
 
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+
+# Windows 终端编码兼容
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
 
 TOOLS = [
     {
@@ -194,39 +199,64 @@ def _show_sessions():
         print(f"  {i}. {s['title']}  [{s['message_count']}条]  {s['updated_at']}")
 
 
-def _pick_session():
-    """启动时选择会话"""
+def _print_header(session_id=None):
+    """打印启动头部（bongo 风格）"""
     ws = get_context()
-    fp = ws.fingerprint()
+    W = 82
 
-    print("=" * 50)
-    print(f"miniAgent 智能助手  |  {ws.repo_root.name}")
-    print(f"分支: {ws.branch}  |  未提交: {'有' if ws.status != 'clean' else '无'}")
+    def pad(text="", w=W):
+        return "|" + text.ljust(w) + "|"
+
+    def row(left, right=""):
+        if right:
+            gap = max(1, 44 - len(left))
+            return "|" + left + " " * gap + right + " " * max(0, W - len(left) - gap - len(right)) + "|"
+        return "|" + left.ljust(W) + "|"
+
+    logo = [
+        "           _       _    _                    _   ",
+        " _ __ ___ (_)_ __ (_)  / \\   __ _  ___ _ __ | |_ ",
+        "| '_ ` _ \\| | '_ \\| | / _ \\ / _` |/ _ \\ '_ \\| __|",
+        "| | | | | | | | | | |/ ___ \\ (_| |  __/ | | | |_ ",
+        "|_| |_| |_|_|_| |_|_/_/   \\_\\__, |\\___|_| |_|\\__|",
+        "                            |___/                 ",
+    ]
+
+    print("+" + "=" * W + "+")
+    print(pad(""))
+    for ln in logo:
+        print(pad(ln))
+    print(pad(""))
+    print(pad("                              miniAgent"))
+    print(pad("                         local coding agent"))
+    print(pad("                     calm terminal, ready for work"))
+    print(pad(""))
+    print("+" + "-" * W + "+")
+    print(pad(""))
+
+    branch = ws.branch or "-"
+    model = "deepseek-v4-flash"
+    status_text = "dirty" if ws.status != "clean" else "clean"
+
+    label = "new session"
+    if session_id:
+        s = get_session(session_id)
+        label = s.get("title", "unnamed")[:24]
+
+    cwd_str = str(ws.cwd)
+    if len(cwd_str) > 60:
+        cwd_str = "..." + cwd_str[-57:]
+
+    print(row(f"  WORKSPACE   {cwd_str}"))
+    print(row(f"  MODEL       {model}", f" BRANCH      {branch}"))
+    print(row(f"  STATUS      {status_text}", f" SESSION     {label}"))
+
     if ws.recent_commits:
-        print(f"最新: {_clean(ws.recent_commits[0])}")
-    print("=" * 50)
+        commit = _clean(ws.recent_commits[0][:58])
+        print(row(f"  LATEST      {commit}"))
 
-    sessions = list_sessions()
-    if sessions:
-        print("\n历史会话：")
-        _show_sessions()
-
-    print("\n命令：")
-    print("  回车 → 创建新会话")
-    if sessions:
-        print("  输入编号 → 恢复该会话")
-    print()
-
-    choice = input("选择: ").strip()
-    if choice.isdigit() and sessions:
-        idx = int(choice) - 1
-        if 0 <= idx < len(sessions):
-            return sessions[idx]["id"]
-
-    # 创建新会话
-    sid = create_session()
-    print(f"\n创建新会话: {sid}")
-    return sid
+    print(pad(""))
+    print("+" + "=" * W + "+")
 
 
 def _call_ai(messages):
@@ -309,7 +339,10 @@ def chat_loop(session_id):
                 print("再见！")
                 break
             if cmd == "new":
-                return "switch"
+                session_id = create_session()
+                print("\n--- 新会话 ---")
+                messages = [{"role": "system", "content": sys_content}]
+                continue
             if cmd == "list":
                 _show_sessions()
                 continue
@@ -346,12 +379,21 @@ def chat_loop(session_id):
 
 
 def main():
-    while True:
-        session_id = _pick_session()
-        result = chat_loop(session_id)
-        if result != "switch":
-            break
-        print()
+    """入口：mini → 新会话，mini -c → 续接上次会话"""
+    if "-c" in sys.argv:
+        sessions = list_sessions()
+        if sessions:
+            session_id = sessions[0]["id"]
+            _print_header(session_id)
+        else:
+            print("没有历史会话，创建新会话")
+            session_id = create_session()
+            _print_header()
+    else:
+        session_id = create_session()
+        _print_header()
+
+    chat_loop(session_id)
 
 
 if __name__ == "__main__":
