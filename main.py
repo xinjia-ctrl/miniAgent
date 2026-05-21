@@ -2,8 +2,8 @@
 
 import sys
 import json
-from openai import OpenAI
-from config import DEEPSEEK_API_KEY
+from models import create_backend
+from config import BACKEND
 from tools import read_file, list_files, run_shell
 from session import (
     create_session, save_message, load_messages,
@@ -13,7 +13,7 @@ from context import trim_messages
 from memory import remember, forget as forget_memory, build_memory_block
 from workspace import get_context
 
-client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+backend = create_backend(BACKEND)
 
 # Windows 终端编码兼容（强制 UTF-8 输出）
 if hasattr(sys.stdout, "reconfigure"):
@@ -237,7 +237,7 @@ def _print_header(session_id=None):
     print(pad(""))
 
     branch = ws.branch or "-"
-    model = "deepseek-v4-flash"
+    model = backend.model
     status_text = "dirty" if ws.status != "clean" else "clean"
 
     label = "new session"
@@ -262,14 +262,9 @@ def _print_header(session_id=None):
 
 
 def _call_ai(messages):
-    """调 API，返回 message 对象"""
+    """调 API，返回 AssistantMessage"""
     messages = trim_messages(messages)
-    return client.chat.completions.create(
-        model="deepseek-v4-flash",
-        messages=_clean(messages),
-        tools=TOOLS,
-        stream=False,
-    ).choices[0].message
+    return backend.chat(messages, tools=TOOLS)
 
 
 def _handle_tool_calls(msg, messages, session_id, max_steps=15):
@@ -289,16 +284,16 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
                     "id": tc.id,
                     "type": "function",
                     "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
                     },
                 }
                 for tc in msg.tool_calls
             ],
         })
         for tc in msg.tool_calls:
-            func_name = tc.function.name
-            func_args = json.loads(tc.function.arguments)
+            func_name = tc.name
+            func_args = json.loads(tc.arguments)
             print(f"  → {func_name}({json.dumps(func_args, ensure_ascii=False)})")
 
             func = FUNC_MAP.get(func_name)
