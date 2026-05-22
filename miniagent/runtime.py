@@ -58,6 +58,7 @@ class AgentRuntime:
         parallel_safe_tools: set[str] | None = None,
         run_store: RunStore | None = None,
         verbose_tools: Callable[[], bool] | None = None,
+        max_tool_result_chars: int = 60000,
     ):
         self.backend = backend
         self.tools = tools
@@ -79,6 +80,7 @@ class AgentRuntime:
         self.parallel_safe_tools = set(parallel_safe_tools or ())
         self.run_store = run_store or RunStore()
         self.verbose_tools = verbose_tools or (lambda: False)
+        self.max_tool_result_chars = int(max_tool_result_chars)
 
     @staticmethod
     def _default_format_tool_call(name: str, args: dict) -> str:
@@ -107,7 +109,7 @@ class AgentRuntime:
         if not func:
             return f"未知工具: {name}"
         try:
-            return str(func(**(args or {})))
+            return self._clip_tool_result(str(func(**(args or {}))))
         except Exception as exc:
             return f"工具执行失败: {type(exc).__name__}: {exc}"
 
@@ -166,6 +168,7 @@ class AgentRuntime:
         })
 
         step = 0
+        seen_tool_calls = set()
         while step < max_steps:
             step += 1
             self.run_store.write_status(run_id, {
@@ -195,7 +198,13 @@ class AgentRuntime:
                 {"step": step, "tool_count": len(msg.tool_calls)},
             )
 
-            prepared_calls = self._prepare_tool_calls(run_id, msg, messages, session_id)
+            prepared_calls = self._prepare_tool_calls(
+                run_id,
+                msg,
+                messages,
+                session_id,
+                seen_tool_calls,
+            )
             self._execute_prepared_calls(prepared_calls)
             self._record_tool_results(prepared_calls, messages, session_id, run_id)
 
@@ -230,7 +239,14 @@ class AgentRuntime:
             assistant_msg["reasoning_content"] = msg.reasoning_content
         return assistant_msg
 
-    def _prepare_tool_calls(self, run_id: str, msg, messages: list[dict], session_id: str) -> list[ToolExecution]:
+    def _prepare_tool_calls(
+        self,
+        run_id: str,
+        msg,
+        messages: list[dict],
+        session_id: str,
+        seen_tool_calls: set[str],
+    ) -> list[ToolExecution]:
         prepared_calls = []
         for tc in msg.tool_calls:
             name = tc.name
@@ -247,6 +263,19 @@ class AgentRuntime:
                     {"tool": name, "error": str(exc)},
                 )
                 continue
+
+            signature = self._tool_signature(name, args)
+            if signature in seen_tool_calls:
+                result = f"工具调用被跳过：检测到重复调用 {self.format_tool_call(name, args)}"
+                self.print_tool_result(result)
+                self._append_tool_message(messages, session_id, tc.id, name, result)
+                self.run_store.append_trace(
+                    run_id,
+                    "tool_repeated",
+                    {"tool": name, "args": args},
+                )
+                continue
+            seen_tool_calls.add(signature)
 
             if self.verbose_tools():
                 print(f"  → {name}({json.dumps(args, ensure_ascii=False)})")
@@ -344,3 +373,18 @@ class AgentRuntime:
         self.run_store.write_status(run_id, payload)
         self.run_store.write_report(run_id, payload)
         self.run_store.append_trace(run_id, "run_finished", payload)
+
+    @staticmethod
+    def _tool_signature(name: str, args: dict) -> str:
+        try:
+            encoded = json.dumps(args or {}, ensure_ascii=False, sort_keys=True)
+        except TypeError:
+            encoded = str(args or {})
+        return f"{name}:{encoded}"
+
+    def _clip_tool_result(self, text: str) -> str:
+        limit = max(1000, self.max_tool_result_chars)
+        if len(text) <= limit:
+            return text
+        omitted = len(text) - limit
+        return text[:limit] + f"\n... 工具结果过长，已截断 {omitted} 字符"

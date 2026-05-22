@@ -121,3 +121,54 @@ def test_parallel_safe_tool_calls_keep_result_order(tmp_path, monkeypatch):
     tool_messages = [msg for msg in messages if msg.get("role") == "tool"]
     assert [msg["tool_call_id"] for msg in tool_messages] == ["call_1", "call_2"]
     assert [msg["content"] for msg in tool_messages] == ["one", "two"]
+
+
+def test_repeated_tool_call_is_skipped(tmp_path, monkeypatch):
+    monkeypatch.setattr(session_module, "SESSION_DIR", tmp_path / "sessions")
+    session_id = session_module.create_session()
+
+    backend = FakeBackend([
+        AssistantMessage(
+            tool_calls=[
+                ToolCall(id="call_2", name="read_file", arguments=json.dumps({"path": "README.md"})),
+            ],
+        ),
+        AssistantMessage(content="完成"),
+    ])
+    runtime = _make_runtime(
+        tmp_path,
+        backend=backend,
+        func_map={"read_file": lambda path: f"content:{path}"},
+    )
+    messages = [{"role": "system", "content": "sys"}]
+    first = AssistantMessage(
+        tool_calls=[
+            ToolCall(id="call_1", name="read_file", arguments=json.dumps({"path": "README.md"})),
+        ],
+    )
+
+    runtime.handle_tool_calls(first, messages, session_id)
+
+    tool_messages = [msg for msg in messages if msg.get("role") == "tool"]
+    assert tool_messages[0]["content"] == "content:README.md"
+    assert "检测到重复调用" in tool_messages[1]["content"]
+
+
+def test_tool_result_is_clipped(tmp_path):
+    runtime = AgentRuntime(
+        backend=FakeBackend([]),
+        tools=[],
+        func_map={"long": lambda: "x" * 2000},
+        refresh_system_message=lambda messages: None,
+        check_permission=lambda name, args, session_id=None: (True, "allowed"),
+        log_tool_call=lambda session_id, name, args: None,
+        log_tool_result=lambda session_id, name, result: None,
+        print_tool_result=lambda result: None,
+        run_store=RunStore(tmp_path / "runs"),
+        max_tool_result_chars=1200,
+    )
+
+    result = runtime.run_tool_function("long", {})
+
+    assert len(result) < 1400
+    assert "工具结果过长" in result
