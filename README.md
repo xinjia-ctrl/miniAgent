@@ -147,3 +147,24 @@ mini
 ```
 
 旧版 `local_config.py` 仍然兼容，但不再推荐作为长期配置方式。
+如确实需要旧版文件配置，可以参考 `local_config.example.py`；不要把真实密钥提交到仓库。
+
+## 开发与测试
+
+安装开发依赖：
+
+```powershell
+pip install -e ".[dev]"
+```
+
+运行测试：
+
+```powershell
+pytest
+```
+
+运行静态检查：
+
+```powershell
+ruff check .
+```

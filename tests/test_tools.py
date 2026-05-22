@@ -1,4 +1,5 @@
 from miniagent import tools
+from miniagent.tool_registry import parse_direct_command
 
 
 def test_read_file_uses_real_line_numbers(tmp_path, monkeypatch):
@@ -87,3 +88,11 @@ def test_binary_file_is_rejected(tmp_path, monkeypatch):
         result = str(exc)
 
     assert "二进制" in result
+
+
+def test_direct_command_invalid_line_number_uses_default():
+    name, args = parse_direct_command("read_file README.md nope 2")
+
+    assert name == "read_file"
+    assert args["start"] == 1
+    assert args["end"] == 2

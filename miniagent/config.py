@@ -45,13 +45,15 @@ def _load_local_config():
     result = {}
     try:
         from local_config import DEEPSEEK_API_KEY
-        result["deepseek_api_key"] = DEEPSEEK_API_KEY
+        if DEEPSEEK_API_KEY:
+            result["deepseek_api_key"] = DEEPSEEK_API_KEY
     except ImportError:
         pass
 
     try:
         from local_config import ANTHROPIC_API_KEY
-        result["anthropic_api_key"] = ANTHROPIC_API_KEY
+        if ANTHROPIC_API_KEY:
+            result["anthropic_api_key"] = ANTHROPIC_API_KEY
     except ImportError:
         pass
 

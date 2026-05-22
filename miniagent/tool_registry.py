@@ -241,6 +241,13 @@ def build_func_map(delegate_func):
     }
 
 
+def _int_arg(value, default):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def parse_direct_command(text):
     text = text.strip()
     if not text:
@@ -252,10 +259,18 @@ def parse_direct_command(text):
     rest = parts[1] if len(parts) > 1 else ""
     if name == "read_file":
         tokens = rest.split()
-        return ("read_file", {"path": tokens[0] if tokens else "", "start": int(tokens[1]) if len(tokens) > 1 else 1, "end": int(tokens[2]) if len(tokens) > 2 else 1000})
+        return ("read_file", {
+            "path": tokens[0] if tokens else "",
+            "start": _int_arg(tokens[1], 1) if len(tokens) > 1 else 1,
+            "end": _int_arg(tokens[2], 1000) if len(tokens) > 2 else 1000,
+        })
     if name == "read_many_files":
         tokens = rest.split()
-        return ("read_many_files", {"paths": tokens[0].split(",") if tokens else [], "start": int(tokens[1]) if len(tokens) > 1 else 1, "end": int(tokens[2]) if len(tokens) > 2 else 400})
+        return ("read_many_files", {
+            "paths": tokens[0].split(",") if tokens else [],
+            "start": _int_arg(tokens[1], 1) if len(tokens) > 1 else 1,
+            "end": _int_arg(tokens[2], 400) if len(tokens) > 2 else 400,
+        })
     if name == "list_files":
         return ("list_files", {"path": rest or "."})
     if name == "find_files":
