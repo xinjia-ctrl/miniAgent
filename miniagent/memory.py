@@ -3,6 +3,8 @@
 
 import json
 import uuid
+import math
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +13,18 @@ MEMORY_DIR = Path.cwd() / ".mini" / "memory"
 
 def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _parse_time(value):
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return datetime.now()
+
+
+def _keywords(text):
+    tokens = re.findall(r"[\w\u4e00-\u9fff]+", str(text).lower())
+    return sorted({token for token in tokens if len(token) >= 2})
 
 
 def _ensure_dir():
@@ -57,7 +71,7 @@ def dump_working():
 
 # ======== 持久记忆（跨会话，存文件） ========
 
-def remember(tag, content, importance=1):
+def remember(tag, content, importance=1, keywords=None):
     """存储一条持久记忆
 
     importance: 1-5，越高越优先保留
@@ -68,7 +82,8 @@ def remember(tag, content, importance=1):
         "id": mem_id,
         "tag": tag,
         "content": content,
-        "importance": importance,
+        "keywords": sorted(set(keywords or _keywords(f"{tag} {content}"))),
+        "importance": max(1, min(int(importance), 5)),
         "created_at": _now(),
         "updated_at": _now(),
     }
@@ -77,8 +92,8 @@ def remember(tag, content, importance=1):
     return mem_id
 
 
-def recall(tag=None, limit=10):
-    """按标签检索持久记忆，按重要性倒序"""
+def recall(tag=None, query=None, limit=10, now=None):
+    """检索持久记忆，综合标签、关键词、重要性和时效衰减排序。"""
     _ensure_dir()
     results = []
     for f in MEMORY_DIR.glob("*.json"):
@@ -86,11 +101,37 @@ def recall(tag=None, limit=10):
             data = json.loads(f.read_text(encoding="utf-8"))
             if tag and data.get("tag") != tag:
                 continue
+            data.setdefault("keywords", _keywords(f"{data.get('tag', '')} {data.get('content', '')}"))
+            data["_score"] = score_memory(data, query=query, now=now)
             results.append(data)
         except (json.JSONDecodeError, OSError):
             continue
-    results.sort(key=lambda x: (x.get("importance", 0), x.get("updated_at", "")), reverse=True)
+    results.sort(key=lambda x: (x.get("_score", 0), x.get("importance", 0), x.get("updated_at", "")), reverse=True)
     return results[:limit]
+
+
+def score_memory(item, query=None, now=None):
+    """计算记忆召回分数：重要性 + tag/关键词命中 + 时效衰减。"""
+    now = now or datetime.now()
+    updated = _parse_time(item.get("updated_at") or item.get("created_at"))
+    age_days = max(0, (now - updated).days)
+    recency = math.exp(-age_days / 30)
+
+    score = float(item.get("importance", 1)) + recency
+    if not query:
+        return score
+
+    query_terms = set(_keywords(query))
+    if not query_terms:
+        return score
+    tag_terms = set(_keywords(item.get("tag", "")))
+    keyword_terms = set(item.get("keywords") or [])
+    content_terms = set(_keywords(item.get("content", "")))
+
+    score += 2.0 * len(query_terms & tag_terms)
+    score += 1.5 * len(query_terms & keyword_terms)
+    score += 0.5 * len(query_terms & content_terms)
+    return score
 
 
 def forget(mem_id):
@@ -100,25 +141,27 @@ def forget(mem_id):
         path.unlink()
 
 
-def summarize_memories(tags=None, limit=5):
+def summarize_memories(tags=None, query=None, limit=5):
     """把持久记忆压缩成文本块（给 system prompt 用）"""
-    items = recall(tag=tags, limit=limit) if tags else recall(limit=limit)
+    items = recall(tag=tags, query=query, limit=limit) if tags else recall(query=query, limit=limit)
     if not items:
         return ""
     lines = ["【记忆存档】"]
     for item in items:
-        lines.append(f"- [{item['tag']}] {item['content']}")
+        keywords = ", ".join(item.get("keywords") or [])
+        suffix = f" (keywords: {keywords})" if keywords else ""
+        lines.append(f"- [{item['tag']}] {item['content']}{suffix}")
     return "\n".join(lines)
 
 
 # ======== 会话摘要（压缩历史到一段话） ========
 
-def build_memory_block(tags=None, mem_limit=5):
+def build_memory_block(tags=None, query=None, mem_limit=5):
     """组装完整记忆文本块，注入 system prompt"""
     parts = []
 
     # 持久记忆
-    mem_text = summarize_memories(tags=tags, limit=mem_limit)
+    mem_text = summarize_memories(tags=tags, query=query, limit=mem_limit)
     if mem_text:
         parts.append(mem_text)
 

@@ -141,3 +141,18 @@ def trim_messages(messages):
         result = system_msgs + _flatten(history) + protected
 
     return result
+
+
+def measure_messages(messages):
+    """返回上下文裁剪前后的基础指标，方便做确定性实验。"""
+    before = _char_len(messages)
+    trimmed = trim_messages(messages)
+    after = _char_len(trimmed)
+    return {
+        "before_chars": before,
+        "after_chars": after,
+        "removed_chars": max(0, before - after),
+        "message_count_before": len(messages),
+        "message_count_after": len(trimmed),
+        "trimmed": after <= before,
+    }

@@ -29,6 +29,64 @@ class AssistantMessage:
     streamed: bool = False
 
 
+class FakeModelClient:
+    """确定性假模型客户端，用于测试 Runtime 和工具循环。
+
+    outputs 里的元素可以是 AssistantMessage、字符串，或形如
+    {"content": "...", "tool_calls": [...]} 的字典。
+    """
+
+    def __init__(self, outputs=None, model="fake"):
+        self.outputs = list(outputs or [])
+        self.calls = []
+        self.config = {"model": model}
+
+    @property
+    def name(self) -> str:
+        return "fake"
+
+    @property
+    def model(self) -> str:
+        return self.config["model"]
+
+    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> AssistantMessage:
+        self.calls.append({"messages": list(messages), "tools": tools})
+        if not self.outputs:
+            return AssistantMessage(content="")
+        return self._coerce(self.outputs.pop(0))
+
+    def chat_stream(self, messages: list[dict], tools: list[dict] | None = None, on_text=None) -> AssistantMessage:
+        msg = self.chat(messages, tools=tools)
+        if on_text and msg.content:
+            on_text(msg.content)
+            msg.streamed = True
+        return msg
+
+    @staticmethod
+    def _coerce(value) -> AssistantMessage:
+        if isinstance(value, AssistantMessage):
+            return value
+        if isinstance(value, str):
+            return AssistantMessage(content=value)
+        if isinstance(value, dict):
+            tool_calls = []
+            for index, item in enumerate(value.get("tool_calls") or []):
+                if isinstance(item, ToolCall):
+                    tool_calls.append(item)
+                else:
+                    tool_calls.append(ToolCall(
+                        id=item.get("id", f"fake_call_{index}"),
+                        name=item["name"],
+                        arguments=item.get("arguments", "{}"),
+                    ))
+            return AssistantMessage(
+                content=value.get("content"),
+                tool_calls=tool_calls or None,
+                reasoning_content=value.get("reasoning_content"),
+            )
+        return AssistantMessage(content=str(value))
+
+
 # ===================================================================
 #  抽象基类
 # ===================================================================

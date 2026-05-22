@@ -42,7 +42,10 @@ class WorkspaceContext:
                 ["git", "rev-parse", "--show-toplevel"],
                 cwd=self.cwd, capture_output=True, timeout=5,
             )
-            return Path(result.stdout.decode("utf-8", errors="replace").strip()).resolve()
+            root = result.stdout.decode("utf-8", errors="replace").strip()
+            if result.returncode == 0 and root:
+                return Path(root).resolve()
+            return self.cwd
         except Exception:
             return self.cwd
 
@@ -90,6 +93,17 @@ class WorkspaceContext:
                     encoding="utf-8",
                     errors="replace",
                 )[:INSTRUCTION_CHAR_LIMIT]
+
+    def refresh_if_changed(self):
+        """刷新并返回工作区漂移信息。"""
+        before = self.fingerprint()
+        self.refresh()
+        after = self.fingerprint()
+        return {
+            "changed": before != after,
+            "before": before,
+            "after": after,
+        }
 
     def fingerprint(self):
         """计算工作区指纹

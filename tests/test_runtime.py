@@ -1,34 +1,15 @@
 import json
 from pathlib import Path
 
-from miniagent.models import AssistantMessage, ToolCall
+from miniagent.models import AssistantMessage, FakeModelClient, ToolCall
 from miniagent.run_store import RunStore
 from miniagent.runtime import AgentRuntime
 from miniagent import session as session_module
 
 
-class FakeBackend:
-    def __init__(self, outputs):
-        self.outputs = list(outputs)
-        self.model = "fake"
-        self.calls = []
-
-    def chat(self, messages, tools=None):
-        self.calls.append(("chat", list(messages), tools))
-        return self.outputs.pop(0)
-
-    def chat_stream(self, messages, tools=None, on_text=None):
-        self.calls.append(("chat_stream", list(messages), tools))
-        msg = self.outputs.pop(0)
-        if on_text and msg.content:
-            on_text(msg.content)
-            msg.streamed = True
-        return msg
-
-
 def _make_runtime(tmp_path, backend=None, func_map=None, parallel_safe_tools=None):
     return AgentRuntime(
-        backend=backend or FakeBackend([]),
+        backend=backend or FakeModelClient([]),
         tools=[],
         func_map=func_map or {},
         refresh_system_message=lambda messages: None,
@@ -62,7 +43,7 @@ def test_handle_tool_calls_records_tool_messages(tmp_path, monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_DIR", tmp_path / "sessions")
     session_id = session_module.create_session()
 
-    backend = FakeBackend([
+    backend = FakeModelClient([
         AssistantMessage(content="完成"),
     ])
     runtime = _make_runtime(
@@ -96,7 +77,7 @@ def test_parallel_safe_tool_calls_keep_result_order(tmp_path, monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_DIR", tmp_path / "sessions")
     session_id = session_module.create_session()
 
-    backend = FakeBackend([
+    backend = FakeModelClient([
         AssistantMessage(content="完成"),
     ])
     runtime = _make_runtime(
@@ -127,7 +108,7 @@ def test_repeated_tool_call_is_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_DIR", tmp_path / "sessions")
     session_id = session_module.create_session()
 
-    backend = FakeBackend([
+    backend = FakeModelClient([
         AssistantMessage(
             tool_calls=[
                 ToolCall(id="call_2", name="read_file", arguments=json.dumps({"path": "README.md"})),
@@ -156,7 +137,7 @@ def test_repeated_tool_call_is_skipped(tmp_path, monkeypatch):
 
 def test_tool_result_is_clipped(tmp_path):
     runtime = AgentRuntime(
-        backend=FakeBackend([]),
+        backend=FakeModelClient([]),
         tools=[],
         func_map={"long": lambda: "x" * 2000},
         refresh_system_message=lambda messages: None,
