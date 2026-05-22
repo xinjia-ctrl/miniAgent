@@ -6,7 +6,14 @@ import json
 import subprocess
 from pathlib import Path
 from .models import create_backend
-from .config import BACKEND
+from .config import (
+    build_backend_config,
+    config_path,
+    get_config_value,
+    load_user_config,
+    set_config_value,
+    unset_config_value,
+)
 from .tools import (
     read_file, list_files, run_shell,
     write_file, replace_in_file, apply_patch,
@@ -30,7 +37,7 @@ except ImportError:
     Completion = None
 
 backend = None
-ACTIVE_BACKEND_CONFIG = dict(BACKEND)
+ACTIVE_BACKEND_CONFIG = build_backend_config()
 VERBOSE_TOOLS = False
 APPROVE_DIFFS = True
 EDIT_TOOLS = {"write_file", "replace_in_file", "apply_patch"}
@@ -634,6 +641,26 @@ def _show_audit_logs(limit=20):
         print(line)
 
 
+def _mask_secret(key, value):
+    if value is None:
+        return None
+    if "key" not in key.lower() and "token" not in key.lower():
+        return value
+    text = str(value)
+    if len(text) <= 8:
+        return "***"
+    return text[:4] + "..." + text[-4:]
+
+
+def _show_config():
+    config = load_user_config()
+    if not config:
+        print("(暂无用户级配置)")
+        return
+    for key in sorted(config):
+        print(f"{key} = {_mask_secret(key, config[key])}")
+
+
 def _load_session_messages(session_id):
     """加载会话并构建当前 API messages"""
     sys_content = _build_system_content()
@@ -1226,15 +1253,30 @@ def _parse_args(argv):
         help="显示最近多少条日志",
     )
 
+    config_parser = subparsers.add_parser("config", help="管理用户级配置")
+    config_subparsers = config_parser.add_subparsers(dest="config_command")
+
+    config_subparsers.add_parser("list", help="列出当前用户级配置")
+    config_subparsers.add_parser("path", help="显示配置文件路径")
+
+    config_get = config_subparsers.add_parser("get", help="读取配置项")
+    config_get.add_argument("key", help="配置键")
+
+    config_set = config_subparsers.add_parser("set", help="写入配置项")
+    config_set.add_argument("key", help="配置键")
+    config_set.add_argument("value", help="配置值")
+
+    config_unset = config_subparsers.add_parser("unset", help="删除配置项")
+    config_unset.add_argument("key", help="配置键")
+
     return parser.parse_args(argv)
 
 
 def _create_backend_from_args(args):
     """根据 CLI 参数创建模型后端"""
     global ACTIVE_BACKEND_CONFIG
-    config = dict(BACKEND)
-    if args.model:
-        config["model"] = args.model
+    overrides = {"model": args.model}
+    config = build_backend_config(overrides)
     ACTIVE_BACKEND_CONFIG = dict(config)
     return create_backend(config)
 
@@ -1277,6 +1319,30 @@ def main():
     if args.command == "logs":
         _show_audit_logs(args.limit)
         return
+
+    if args.command == "config":
+        if args.config_command in (None, "list"):
+            _show_config()
+            return
+        if args.config_command == "path":
+            print(config_path())
+            return
+        if args.config_command == "get":
+            value = get_config_value(args.key)
+            if value is None:
+                print("(未设置)")
+            else:
+                print(_mask_secret(args.key, value))
+            return
+        if args.config_command == "set":
+            set_config_value(args.key, args.value)
+            shown = _mask_secret(args.key, args.value)
+            print(f"已设置 {args.key} = {shown}")
+            return
+        if args.config_command == "unset":
+            existed = unset_config_value(args.key)
+            print("已删除配置项。" if existed else "配置项不存在。")
+            return
 
     backend = _create_backend_from_args(args)
 

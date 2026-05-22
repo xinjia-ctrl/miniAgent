@@ -36,4 +36,32 @@ mini --model deepseek-v4-flash
 
 ## 配置
 
-当前默认从 `local_config.py` 读取 API Key。后续建议迁移到环境变量和用户级配置文件。
+配置优先级为：
+
+```text
+默认值 < 用户级配置 < 环境变量 < CLI 参数
+```
+
+用户级配置文件位于：
+
+```powershell
+mini config path
+```
+
+常用配置命令：
+
+```powershell
+mini config set backend deepseek
+mini config set model deepseek-v4-flash
+mini config set api_key sk-xxx
+mini config list
+```
+
+也可以使用环境变量：
+
+```powershell
+$env:DEEPSEEK_API_KEY="sk-xxx"
+mini
+```
+
+旧版 `local_config.py` 仍然兼容，但不再推荐作为长期配置方式。
