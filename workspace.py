@@ -5,12 +5,22 @@ import locale
 import subprocess
 import hashlib
 import json
+import os
 from pathlib import Path
 
 _ENCODING = locale.getpreferredencoding()
+DOC_CHAR_LIMIT = int(os.getenv("MINI_DOC_CHAR_LIMIT", "20000"))
+INSTRUCTION_CHAR_LIMIT = int(os.getenv("MINI_INSTRUCTION_CHAR_LIMIT", "30000"))
 
 # 项目文档白名单（这些文档会自动注入 prompt）
-DOC_NAMES = ("README.md", "pyproject.toml", "AGENTS.md")
+DOC_NAMES = ("README.md", "pyproject.toml")
+
+# 项目指令文件，后面的优先级更高
+INSTRUCTION_FILES = (
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".mini/instructions.md",
+)
 
 
 class WorkspaceContext:
@@ -66,7 +76,20 @@ class WorkspaceContext:
         for name in DOC_NAMES:
             path = self.repo_root / name
             if path.exists():
-                self.project_docs[name] = path.read_text(encoding="utf-8", errors="replace")[:1200]
+                self.project_docs[name] = path.read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                )[:DOC_CHAR_LIMIT]
+
+        # 读取项目指令
+        self.project_instructions = {}
+        for name in INSTRUCTION_FILES:
+            path = self.repo_root / name
+            if path.exists() and path.is_file():
+                self.project_instructions[name] = path.read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                )[:INSTRUCTION_CHAR_LIMIT]
 
     def fingerprint(self):
         """计算工作区指纹
@@ -81,6 +104,7 @@ class WorkspaceContext:
             "status": self.status,
             "commits": list(self.recent_commits),
             "docs": dict(self.project_docs),
+            "instructions": dict(self.project_instructions),
         }
         return hashlib.sha256(
             json.dumps(payload, sort_keys=True).encode("utf-8")
@@ -92,6 +116,9 @@ class WorkspaceContext:
         docs = "\n".join(
             f"- {name}\n{content}" for name, content in self.project_docs.items()
         ) or "- 无"
+        instructions = "\n".join(
+            f"- {name}\n{content}" for name, content in self.project_instructions.items()
+        ) or "- 无"
 
         return f"""工作区状态：
 - 目录：{self.cwd}
@@ -101,6 +128,8 @@ class WorkspaceContext:
 {self.status}
 - 最近提交：
 {commits}
+- 项目指令：
+{instructions}
 - 项目文档：
 {docs}"""
 

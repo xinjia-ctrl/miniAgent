@@ -6,3 +6,4 @@ venv/
 local_config.py
 .mini/sessions/
 .mini/memory/
+.mini/logs/

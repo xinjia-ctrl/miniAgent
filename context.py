@@ -3,18 +3,19 @@
 
 import copy
 import json
+import os
 
-TOTAL_BUDGET = 12000   # 总字符数上限（约 6000 tokens）
+TOTAL_BUDGET = int(os.getenv("MINI_CONTEXT_BUDGET", "240000"))
 
 # 各部分字符数配额
 SECTION_BUDGETS = {
-    "prefix": 3600,    # 系统指令 + 工作区快照
-    "history": 5200,   # 对话历史
+    "prefix": int(os.getenv("MINI_PREFIX_BUDGET", "60000")),
+    "history": int(os.getenv("MINI_HISTORY_BUDGET", "160000")),
 }
 
 SECTION_FLOORS = {
-    "prefix": 1200,    # 至少保留核心系统指令
-    "history": 1500,   # 至少保留最近几轮对话
+    "prefix": 12000,
+    "history": 30000,
 }
 
 

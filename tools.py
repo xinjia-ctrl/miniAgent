@@ -83,7 +83,7 @@ def _confirm_dangerous(command):
     answer = input("确认执行请输入 yes: ").strip().lower()
     return answer == "yes"
 
-def read_file(path, start=1, end=200):
+def read_file(path, start=1, end=1000):
     """读取文件内容（按行号范围）"""
     p = _check_path(path)
     if not p.is_file():
