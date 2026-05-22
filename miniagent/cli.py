@@ -5,9 +5,9 @@ import sys
 import json
 import re
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from .models import create_backend
+from .runtime import AgentRuntime, assistant_extra
 from .config import (
     build_backend_config,
     config_path,
@@ -39,6 +39,7 @@ except ImportError:
     Completion = None
 
 backend = None
+runtime = None
 ACTIVE_BACKEND_CONFIG = build_backend_config()
 VERBOSE_TOOLS = False
 APPROVE_DIFFS = True
@@ -384,41 +385,11 @@ def _parse_repl(text):
 
 def _exec_direct(name, args):
     """直接执行工具并打印结果"""
-    func = FUNC_MAP.get(name)
-    if not func:
-        print(f"未知工具: {name}")
-        return ""
-    try:
-        allowed, reason = _check_permission(name, args, session_id=None)
-        if not allowed:
-            print(reason)
-            return reason
-        log_tool_call(None, name, args)
-        before_diff = _git_diff_text() if name in EDIT_TOOLS else ""
-        before_status = _git_status_short() if name in EDIT_TOOLS else ""
-        snapshots = (
-            _snapshot_paths(_paths_for_edit_tool(name, args))
-            if name in EDIT_TOOLS else {}
-        )
-        result = func(**args)
-        log_tool_result(None, name, result)
-        print(str(result))
-        if name in EDIT_TOOLS and not str(result).startswith("错误"):
-            _review_diff_after_edit(None, name, before_diff, before_status, snapshots)
-        return str(result)
-    except Exception as e:
-        print(f"错误: {e}")
-        return str(e)
+    return _runtime().exec_direct(name, args)
 
 
 def _run_tool_function(func_name, func_args):
-    func = FUNC_MAP.get(func_name)
-    if not func:
-        return f"未知工具: {func_name}"
-    try:
-        return func(**func_args)
-    except Exception as e:
-        return f"工具执行失败: {type(e).__name__}: {e}"
+    return _runtime().run_tool_function(func_name, func_args)
 
 
 def _run_git(args, input_text=None):
@@ -1148,10 +1119,7 @@ def _history_to_message(item):
 
 def _assistant_extra(msg):
     """提取需要回传给模型的 assistant 扩展字段"""
-    extra = {}
-    if getattr(msg, "reasoning_content", None):
-        extra["reasoning_content"] = msg.reasoning_content
-    return extra
+    return assistant_extra(msg)
 
 
 def _format_tool_call(name, args):
@@ -1192,182 +1160,45 @@ def _print_tool_result(result):
         print(f"    完成: {len(text)} 字符")
 
 
+def _runtime():
+    """创建或刷新 Runtime，CLI 只保留交互层职责。"""
+    global runtime
+    if runtime is None or runtime.backend is not backend:
+        runtime = AgentRuntime(
+            backend=backend,
+            tools=TOOLS,
+            func_map=FUNC_MAP,
+            refresh_system_message=_refresh_system_message,
+            check_permission=_check_permission,
+            log_tool_call=log_tool_call,
+            log_tool_result=log_tool_result,
+            format_tool_call=_format_tool_call,
+            print_tool_result=_print_tool_result,
+            git_diff_text=_git_diff_text,
+            git_status_short=_git_status_short,
+            paths_for_edit_tool=_paths_for_edit_tool,
+            snapshot_paths=_snapshot_paths,
+            review_diff_after_edit=_review_diff_after_edit,
+            edit_tools=EDIT_TOOLS,
+            parallel_safe_tools=PARALLEL_SAFE_TOOLS,
+            verbose_tools=lambda: VERBOSE_TOOLS,
+        )
+    return runtime
+
+
 def _call_ai(messages):
     """调 API，返回 AssistantMessage"""
-    _refresh_system_message(messages)
-    messages = trim_messages(messages)
-    return backend.chat(messages, tools=TOOLS)
+    return _runtime().call_ai(messages)
 
 
 def _call_ai_stream(messages):
     """流式调 API，返回聚合后的 AssistantMessage"""
-    _refresh_system_message(messages)
-    messages = trim_messages(messages)
-    return backend.chat_stream(
-        messages,
-        tools=TOOLS,
-        on_text=lambda text: print(text, end="", flush=True),
-    )
+    return _runtime().call_ai_stream(messages)
 
 
 def _handle_tool_calls(msg, messages, session_id, max_steps=15):
     """ReAct 循环：反复调工具直到 AI 给出最终回答"""
-    step = 0
-    while step < max_steps:
-        step += 1
-
-        if not msg.tool_calls:
-            return msg.content or "", _assistant_extra(msg), msg.streamed
-
-        assistant_msg = {
-            "role": "assistant",
-            "content": msg.content,
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.name,
-                        "arguments": tc.arguments,
-                    },
-                }
-                for tc in msg.tool_calls
-            ],
-        }
-        if msg.reasoning_content:
-            assistant_msg["reasoning_content"] = msg.reasoning_content
-        messages.append(assistant_msg)
-        save_message(
-            session_id,
-            "assistant",
-            msg.content or "",
-            tool_calls=assistant_msg["tool_calls"],
-            reasoning_content=assistant_msg.get("reasoning_content"),
-        )
-
-        prepared_calls = []
-        for tc in msg.tool_calls:
-            func_name = tc.name
-            try:
-                func_args = json.loads(tc.arguments or "{}")
-            except json.JSONDecodeError as e:
-                result = f"工具参数 JSON 解析失败: {e}"
-                print(f"  → {func_name}(参数解析失败)")
-                _print_tool_result(result)
-                tool_msg = {
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result,
-                }
-                messages.append(tool_msg)
-                save_message(
-                    session_id,
-                    "tool",
-                    result,
-                    tool_call_id=tc.id,
-                    name=func_name,
-                )
-                continue
-
-            if VERBOSE_TOOLS:
-                print(f"  → {func_name}({json.dumps(func_args, ensure_ascii=False)})")
-            else:
-                print(f"  → {_format_tool_call(func_name, func_args)}")
-
-            allowed, reason = _check_permission(func_name, func_args, session_id=session_id)
-            if not allowed:
-                result = reason
-                _print_tool_result(result)
-                tool_msg = {
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result,
-                }
-                messages.append(tool_msg)
-                save_message(
-                    session_id,
-                    "tool",
-                    result,
-                    tool_call_id=tc.id,
-                    name=func_name,
-                )
-                continue
-
-            log_tool_call(session_id, func_name, func_args)
-            before_diff = _git_diff_text() if func_name in EDIT_TOOLS else ""
-            before_status = _git_status_short() if func_name in EDIT_TOOLS else ""
-            snapshots = (
-                _snapshot_paths(_paths_for_edit_tool(func_name, func_args))
-                if func_name in EDIT_TOOLS else {}
-            )
-            prepared_calls.append({
-                "tc": tc,
-                "name": func_name,
-                "args": func_args,
-                "before_diff": before_diff,
-                "before_status": before_status,
-                "snapshots": snapshots,
-            })
-
-        if len(prepared_calls) > 1 and all(
-            item["name"] in PARALLEL_SAFE_TOOLS for item in prepared_calls
-        ):
-            print(f"  并行执行 {len(prepared_calls)} 个工具调用")
-            with ThreadPoolExecutor(max_workers=min(8, len(prepared_calls))) as executor:
-                futures = [
-                    executor.submit(_run_tool_function, item["name"], item["args"])
-                    for item in prepared_calls
-                ]
-                for item, future in zip(prepared_calls, futures):
-                    item["result"] = future.result()
-        else:
-            for item in prepared_calls:
-                item["result"] = _run_tool_function(item["name"], item["args"])
-
-        for item in prepared_calls:
-            tc = item["tc"]
-            func_name = item["name"]
-            result = item["result"]
-
-            _print_tool_result(result)
-            log_tool_result(session_id, func_name, result)
-
-            if func_name in EDIT_TOOLS and not str(result).startswith("错误"):
-                decision = _review_diff_after_edit(
-                    session_id,
-                    func_name,
-                    item["before_diff"],
-                    item["before_status"],
-                    item["snapshots"],
-                )
-                if decision == "rolled_back":
-                    result = f"{result}\n\n审批结果：用户已回滚本次文件改动"
-                elif decision in ("accepted", "continue"):
-                    result = f"{result}\n\n审批结果：{decision}"
-
-            tool_content = str(result).encode("utf-8", errors="replace").decode("utf-8")
-            tool_msg = {
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": tool_content,
-            }
-            messages.append(tool_msg)
-            save_message(
-                session_id,
-                "tool",
-                tool_content,
-                tool_call_id=tc.id,
-                name=func_name,
-            )
-
-        print("AI: ", end="", flush=True)
-        msg = _call_ai_stream(messages)
-        if msg.streamed:
-            print()
-        elif not msg.tool_calls and msg.content:
-            print(msg.content)
-
-    return msg.content or "(达到最大步骤数)", _assistant_extra(msg), msg.streamed
+    return _runtime().handle_tool_calls(msg, messages, session_id, max_steps=max_steps)
 
 
 def chat_loop(session_id):

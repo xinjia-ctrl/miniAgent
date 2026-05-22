@@ -7,3 +7,5 @@ local_config.py
 .mini/sessions/
 .mini/memory/
 .mini/logs/
+.mini/runs/
+.mini_test_runtime/

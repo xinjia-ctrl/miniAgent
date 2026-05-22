@@ -78,6 +78,25 @@ forget_memory
 
 当模型一次请求多个只读或网络读取类工具时，miniAgent 会并行执行安全工具调用，例如多个 `read_file`、`git_diff`、`web_fetch`。涉及写文件、shell、审批和回滚的操作仍会串行执行。
 
+## 运行时结构
+
+核心控制循环已经从 CLI 中拆出：
+
+```text
+miniagent/runtime.py    AgentRuntime，负责模型调用、工具调度、权限门禁和会话写入
+miniagent/run_store.py  RunStore，记录每次请求的 trace、状态和摘要
+miniagent/cli.py        终端交互、slash 命令和参数解析
+tests/test_runtime.py   FakeBackend 驱动的 Runtime 测试
+```
+
+每次直接工具执行或模型工具循环都会写入：
+
+```text
+.mini/runs/<run_id>/trace.jsonl
+.mini/runs/<run_id>/task_status.json
+.mini/runs/<run_id>/report.json
+```
+
 ## 配置
 
 配置优先级为：

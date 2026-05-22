@@ -14,6 +14,11 @@ dependencies = [
     "prompt_toolkit",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
 [project.scripts]
 mini = "miniagent.cli:main"
 
