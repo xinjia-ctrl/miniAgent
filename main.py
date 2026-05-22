@@ -21,10 +21,41 @@ from memory import remember, forget as forget_memory, build_memory_block
 from workspace import get_context
 from audit import log_event, log_tool_call, log_tool_result
 
+try:
+    from prompt_toolkit import prompt as pt_prompt
+    from prompt_toolkit.completion import Completer, Completion
+except ImportError:
+    pt_prompt = None
+    Completer = object
+    Completion = None
+
 backend = None
+ACTIVE_BACKEND_CONFIG = dict(BACKEND)
 VERBOSE_TOOLS = False
 APPROVE_DIFFS = True
 EDIT_TOOLS = {"write_file", "replace_in_file", "apply_patch"}
+
+SLASH_COMMANDS = {
+    "/": "显示 slash 命令列表",
+    "/help": "显示 slash 命令列表",
+    "/session": "显示当前会话信息",
+    "/session list": "列出历史会话",
+    "/session new": "新建并切换会话",
+    "/session resume": "切换到指定会话",
+    "/session rename": "重命名当前会话",
+    "/session delete": "删除会话",
+    "/model": "显示当前模型",
+    "/model <name>": "临时切换当前模型",
+    "/status": "显示 Git 工作区状态",
+    "/diff": "显示未暂存 diff",
+    "/logs": "显示最近审计日志",
+    "/verbose on": "开启详细工具日志",
+    "/verbose off": "关闭详细工具日志",
+    "/approve on": "开启 diff 审批",
+    "/approve off": "关闭 diff 审批",
+    "/tools": "显示可直接调用的工具命令",
+    "/exit": "退出会话",
+}
 
 # Windows 终端编码兼容（强制 UTF-8 输出）
 if hasattr(sys.stdout, "reconfigure"):
@@ -481,6 +512,71 @@ def _capability_answer():
 也可以直接用自然语言说需求，比如“帮我看一下这个项目结构”“给 main.py 加一个参数”“运行测试并修复报错”。"""
 
 
+def _slash_help():
+    return """可用 slash 命令：
+
+/ 或 /help                 显示这份命令列表
+/session                  显示当前会话信息
+/session list             列出历史会话
+/session new              新建会话
+/session resume <id>      切换到指定会话
+/session rename <title>   重命名当前会话
+/session delete [id]      删除会话，默认删除当前会话前会确认
+/model                    显示当前模型
+/model <name>             临时切换当前模型
+/status                   显示 Git 工作区状态
+/diff                     显示未暂存 diff
+/logs [n]                 显示最近 n 条审计日志
+/verbose on|off           开关详细工具日志
+/approve on|off           开关编辑后的 diff 审批
+/tools                    显示可直接调用的工具命令
+/exit                     退出会话"""
+
+
+def _tools_help():
+    return """可直接调用的工具命令：
+
+read_file 路径 [起始行] [结束行]
+list_files [目录]
+git_status
+git_diff [路径]
+remember 标签 内容
+forget_memory 记忆ID
+!命令                  执行 shell 命令"""
+
+
+class SlashCommandCompleter(Completer):
+    """输入 / 时展示本地命令补全。未安装 prompt_toolkit 时不会实例化。"""
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        if not text.startswith("/"):
+            return
+
+        for command, description in SLASH_COMMANDS.items():
+            if command.startswith(text):
+                yield Completion(
+                    command,
+                    start_position=-len(text),
+                    display=command,
+                    display_meta=description,
+                )
+
+
+SLASH_COMPLETER = SlashCommandCompleter() if pt_prompt else None
+
+
+def _read_user_input():
+    """读取用户输入；安装 prompt_toolkit 后支持 / 自动补全。"""
+    if pt_prompt:
+        return pt_prompt(
+            "你: ",
+            completer=SLASH_COMPLETER,
+            complete_while_typing=True,
+        )
+    return input("你: ")
+
+
 def _clean(obj):
     """递归清理 surrogate 字符"""
     if isinstance(obj, str):
@@ -536,6 +632,170 @@ def _show_audit_logs(limit=20):
 
     for line in reversed(rows):
         print(line)
+
+
+def _load_session_messages(session_id):
+    """加载会话并构建当前 API messages"""
+    sys_content = _build_system_content()
+    messages = [{"role": "system", "content": sys_content}]
+    for item in load_messages(session_id):
+        messages.append(_history_to_message(item))
+    return messages
+
+
+def _switch_model(model_name):
+    """临时切换当前模型"""
+    global backend, ACTIVE_BACKEND_CONFIG
+    ACTIVE_BACKEND_CONFIG = dict(ACTIVE_BACKEND_CONFIG)
+    ACTIVE_BACKEND_CONFIG["model"] = model_name
+    backend = create_backend(ACTIVE_BACKEND_CONFIG)
+
+
+def _handle_session_slash(parts, session_id, messages):
+    """处理 /session 命令，返回 (session_id, messages, should_exit)"""
+    if len(parts) == 1:
+        _show_session_detail(session_id)
+        return session_id, messages, False
+
+    action = parts[1].lower()
+    if action in ("list", "ls"):
+        _show_sessions()
+        return session_id, messages, False
+
+    if action == "new":
+        session_id = create_session()
+        messages = _load_session_messages(session_id)
+        print(f"已创建并切换到新会话: {session_id}")
+        log_event("session_switch", session_id=session_id, action="new")
+        return session_id, messages, False
+
+    if action == "resume":
+        if len(parts) < 3:
+            print("用法: /session resume <session_id>")
+            return session_id, messages, False
+        session_id = parts[2]
+        messages = _load_session_messages(session_id)
+        print(f"已切换到会话: {session_id}")
+        log_event("session_switch", session_id=session_id, action="resume")
+        return session_id, messages, False
+
+    if action == "rename":
+        if len(parts) < 3:
+            print("用法: /session rename <title>")
+            return session_id, messages, False
+        title = " ".join(parts[2:])
+        rename_session(session_id, title)
+        print("已重命名当前会话。")
+        log_event("session_rename", session_id=session_id, title=title)
+        return session_id, messages, False
+
+    if action == "delete":
+        target = parts[2] if len(parts) >= 3 else session_id
+        answer = input(f"确认删除会话 {target}？输入 yes 确认: ").strip().lower()
+        if answer != "yes":
+            print("已取消删除。")
+            return session_id, messages, False
+        try:
+            delete_session(target)
+            log_event("session_delete", session_id=target)
+            print("已删除会话。")
+        except OSError as e:
+            print(f"删除失败: {e}")
+            return session_id, messages, False
+        if target == session_id:
+            session_id = create_session()
+            messages = _load_session_messages(session_id)
+            print(f"已自动创建并切换到新会话: {session_id}")
+        return session_id, messages, False
+
+    print("未知 /session 命令。输入 /session 查看当前会话，或输入 /help 查看帮助。")
+    return session_id, messages, False
+
+
+def _handle_slash_command(text, session_id, messages):
+    """处理 slash command，返回 (handled, session_id, messages, should_exit)"""
+    global VERBOSE_TOOLS, APPROVE_DIFFS
+
+    stripped = text.strip()
+    if stripped in ("/", "/help"):
+        print(_slash_help())
+        return True, session_id, messages, False
+
+    parts = stripped.split()
+    command = parts[0].lower()
+
+    if command in ("/exit", "/quit"):
+        print("再见！")
+        return True, session_id, messages, True
+
+    if command == "/tools":
+        print(_tools_help())
+        return True, session_id, messages, False
+
+    if command == "/session":
+        new_session_id, new_messages, should_exit = _handle_session_slash(
+            parts,
+            session_id,
+            messages,
+        )
+        return True, new_session_id, new_messages, should_exit
+
+    if command == "/model":
+        if len(parts) == 1:
+            print(f"当前模型: {backend.model}")
+            print(f"当前后端: {ACTIVE_BACKEND_CONFIG.get('provider', 'openai')}")
+            return True, session_id, messages, False
+        model_name = parts[1]
+        _switch_model(model_name)
+        print(f"已临时切换模型: {model_name}")
+        log_event("model_switch", session_id=session_id, model=model_name)
+        return True, session_id, messages, False
+
+    if command == "/status":
+        print(git_status())
+        return True, session_id, messages, False
+
+    if command == "/diff":
+        print(git_diff())
+        return True, session_id, messages, False
+
+    if command == "/logs":
+        limit = 20
+        if len(parts) >= 2:
+            try:
+                limit = int(parts[1])
+            except ValueError:
+                print("用法: /logs [数量]")
+                return True, session_id, messages, False
+        _show_audit_logs(limit)
+        return True, session_id, messages, False
+
+    if command == "/verbose":
+        if len(parts) == 1:
+            print(f"详细工具日志: {'on' if VERBOSE_TOOLS else 'off'}")
+            return True, session_id, messages, False
+        value = parts[1].lower()
+        if value not in ("on", "off"):
+            print("用法: /verbose on|off")
+            return True, session_id, messages, False
+        VERBOSE_TOOLS = value == "on"
+        print(f"详细工具日志: {'on' if VERBOSE_TOOLS else 'off'}")
+        return True, session_id, messages, False
+
+    if command == "/approve":
+        if len(parts) == 1:
+            print(f"diff 审批: {'on' if APPROVE_DIFFS else 'off'}")
+            return True, session_id, messages, False
+        value = parts[1].lower()
+        if value not in ("on", "off"):
+            print("用法: /approve on|off")
+            return True, session_id, messages, False
+        APPROVE_DIFFS = value == "on"
+        print(f"diff 审批: {'on' if APPROVE_DIFFS else 'off'}")
+        return True, session_id, messages, False
+
+    print("未知 slash 命令。输入 / 查看可用命令。")
+    return True, session_id, messages, False
 
 
 def _print_header(session_id=None):
@@ -815,19 +1075,16 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
 
 def chat_loop(session_id):
     """常驻聊天循环"""
-    history = load_messages(session_id)
+    messages = _load_session_messages(session_id)
 
-    # 构建 messages：系统指令（含记忆 + 工作区快照）+ 历史消息
-    sys_content = _build_system_content()
-    messages = [{"role": "system", "content": sys_content}]
-    for m in history:
-        messages.append(_history_to_message(m))
-
-    print(f"\n进入会话（输入 exit 退出，输入 new 切换会话）\n")
+    if pt_prompt:
+        print(f"\n进入会话（输入 / 会自动显示命令，输入 exit 退出）\n")
+    else:
+        print(f"\n进入会话（输入 / 回车查看命令，输入 exit 退出）\n")
 
     while True:
         try:
-            user_input = input("你: ")
+            user_input = _read_user_input()
         except KeyboardInterrupt:
             print("\n再见！")
             break
@@ -837,11 +1094,20 @@ def chat_loop(session_id):
         if cmd in ("exit", "quit"):
             print("再见！")
             break
+        if cmd.startswith("/"):
+            handled, session_id, messages, should_exit = _handle_slash_command(
+                user_input,
+                session_id,
+                messages,
+            )
+            if should_exit:
+                break
+            if handled:
+                continue
         if cmd == "new":
             session_id = create_session()
             print("\n--- 新会话 ---")
-            sys_content = _build_system_content()
-            messages = [{"role": "system", "content": sys_content}]
+            messages = _load_session_messages(session_id)
             continue
         if cmd in ("list", "sessions"):
             _show_sessions()
@@ -965,9 +1231,11 @@ def _parse_args(argv):
 
 def _create_backend_from_args(args):
     """根据 CLI 参数创建模型后端"""
+    global ACTIVE_BACKEND_CONFIG
     config = dict(BACKEND)
     if args.model:
         config["model"] = args.model
+    ACTIVE_BACKEND_CONFIG = dict(config)
     return create_backend(config)
 
 
