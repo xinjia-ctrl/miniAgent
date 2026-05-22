@@ -3,7 +3,9 @@
 import argparse
 import sys
 import json
+import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from .models import create_backend
 from .config import (
@@ -17,7 +19,7 @@ from .config import (
 from .tools import (
     read_file, list_files, run_shell,
     write_file, replace_in_file, apply_patch,
-    git_status, git_diff,
+    git_status, git_diff, web_fetch,
 )
 from .session import (
     create_session, save_message, load_messages,
@@ -41,6 +43,34 @@ ACTIVE_BACKEND_CONFIG = build_backend_config()
 VERBOSE_TOOLS = False
 APPROVE_DIFFS = True
 EDIT_TOOLS = {"write_file", "replace_in_file", "apply_patch"}
+PARALLEL_SAFE_TOOLS = {"read_file", "list_files", "git_status", "git_diff", "web_fetch"}
+PERMISSION_MODE = "auto-read"
+PERMISSION_LEVELS = (
+    "read-only",
+    "workspace-write",
+    "shell-write",
+    "network",
+    "git-write",
+    "destructive",
+)
+PERMISSION_DESCRIPTIONS = {
+    "ask": "所有工具操作都询问确认",
+    "auto-read": "自动允许只读操作，写入和命令类操作询问确认",
+    "trusted": "自动允许非破坏性操作，破坏性操作仍询问确认",
+}
+TOOL_PERMISSIONS = {
+    "read_file": "read-only",
+    "list_files": "read-only",
+    "git_status": "read-only",
+    "git_diff": "read-only",
+    "remember": "workspace-write",
+    "forget_memory": "workspace-write",
+    "write_file": "workspace-write",
+    "replace_in_file": "workspace-write",
+    "apply_patch": "workspace-write",
+    "run_shell": "shell-write",
+    "web_fetch": "network",
+}
 
 SLASH_COMMANDS = {
     "/": "显示 slash 命令列表",
@@ -60,6 +90,10 @@ SLASH_COMMANDS = {
     "/verbose off": "关闭详细工具日志",
     "/approve on": "开启 diff 审批",
     "/approve off": "关闭 diff 审批",
+    "/permission": "显示权限模式",
+    "/permission ask": "所有工具操作都询问",
+    "/permission auto-read": "自动允许只读操作",
+    "/permission trusted": "自动允许非破坏性操作",
     "/tools": "显示可直接调用的工具命令",
     "/exit": "退出会话",
 }
@@ -206,6 +240,22 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "web_fetch",
+            "description": "抓取 HTTP/HTTPS 网页并返回提取后的文本内容，需要 network 权限。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "要抓取的网页 URL"},
+                    "timeout": {"type": "integer", "description": "超时秒数", "default": 20},
+                    "max_chars": {"type": "integer", "description": "最多返回字符数", "default": 20000},
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "remember",
             "description": "记住一条信息（持久化，跨会话保留）",
             "parameters": {
@@ -244,6 +294,7 @@ FUNC_MAP = {
     "apply_patch": apply_patch,
     "git_status": git_status,
     "git_diff": git_diff,
+    "web_fetch": web_fetch,
     "remember": remember,
     "forget_memory": forget_memory,
 }
@@ -257,6 +308,7 @@ SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下
 - apply_patch: 批量应用精确替换补丁
 - git_status: 查看 Git 状态
 - git_diff: 查看未暂存 diff
+- web_fetch: 抓取网页文本
 - remember: 记住信息（跨会话保留，对话结束也不会丢）
 - forget_memory: 删除已记住的信息
 
@@ -314,6 +366,9 @@ def _parse_repl(text):
     if name == "git_diff":
         return ("git_diff", {"path": rest.strip() or None})
 
+    if name == "web_fetch":
+        return ("web_fetch", {"url": rest.strip()})
+
     if name == "remember":
         # remember tag content
         tokens = rest.split(maxsplit=1)
@@ -334,6 +389,10 @@ def _exec_direct(name, args):
         print(f"未知工具: {name}")
         return ""
     try:
+        allowed, reason = _check_permission(name, args, session_id=None)
+        if not allowed:
+            print(reason)
+            return reason
         log_tool_call(None, name, args)
         before_diff = _git_diff_text() if name in EDIT_TOOLS else ""
         before_status = _git_status_short() if name in EDIT_TOOLS else ""
@@ -352,6 +411,16 @@ def _exec_direct(name, args):
         return str(e)
 
 
+def _run_tool_function(func_name, func_args):
+    func = FUNC_MAP.get(func_name)
+    if not func:
+        return f"未知工具: {func_name}"
+    try:
+        return func(**func_args)
+    except Exception as e:
+        return f"工具执行失败: {type(e).__name__}: {e}"
+
+
 def _run_git(args, input_text=None):
     """执行 git 命令，返回 CompletedProcess"""
     return subprocess.run(
@@ -364,6 +433,121 @@ def _run_git(args, input_text=None):
         errors="replace",
         timeout=20,
     )
+
+
+def _classify_shell_permission(command):
+    """按命令内容细分 shell 权限等级"""
+    cmd = str(command).strip()
+    low = cmd.lower()
+
+    destructive_patterns = (
+        r"\brm\b",
+        r"\bdel\b",
+        r"\berase\b",
+        r"\brmdir\b",
+        r"\bremove-item\b",
+        r"\bformat\b",
+        r"\bshutdown\b",
+        r"\bgit\s+reset\b",
+        r"\bgit\s+clean\b",
+        r"\bgit\s+checkout\b",
+        r"\bgit\s+restore\b",
+        r"\bgit\s+rebase\b",
+    )
+    if any(re.search(pattern, low) for pattern in destructive_patterns):
+        return "destructive"
+
+    network_patterns = (
+        r"\bpip\s+install\b",
+        r"\bnpm\s+install\b",
+        r"\bpnpm\s+install\b",
+        r"\byarn\s+add\b",
+        r"\bcurl\b",
+        r"\bwget\b",
+        r"\bgit\s+pull\b",
+        r"\bgit\s+push\b",
+        r"\bgh\s+",
+    )
+    if any(re.search(pattern, low) for pattern in network_patterns):
+        return "network"
+
+    git_write_patterns = (
+        r"\bgit\s+add\b",
+        r"\bgit\s+commit\b",
+        r"\bgit\s+merge\b",
+        r"\bgit\s+branch\b",
+        r"\bgit\s+tag\b",
+    )
+    if any(re.search(pattern, low) for pattern in git_write_patterns):
+        return "git-write"
+
+    git_read_patterns = (
+        r"^git\s+status\b",
+        r"^git\s+diff\b",
+        r"^git\s+log\b",
+        r"^git\s+show\b",
+        r"^git\s+branch\b.*(--show-current|-v|--list)?$",
+    )
+    if any(re.search(pattern, low) for pattern in git_read_patterns):
+        return "read-only"
+
+    read_only_patterns = (
+        r"^dir\b",
+        r"^type\b",
+        r"^findstr\b",
+        r"^rg\b",
+        r"^python\s+.*(--help|-h)\b",
+        r"^py\s+.*(--help|-h)\b",
+    )
+    if any(re.search(pattern, low) for pattern in read_only_patterns):
+        return "read-only"
+
+    return "shell-write"
+
+
+def _permission_for_tool(name, args):
+    if name == "run_shell":
+        return _classify_shell_permission((args or {}).get("command", ""))
+    return TOOL_PERMISSIONS.get(name, "shell-write")
+
+
+def _permission_allowed(level):
+    if PERMISSION_MODE == "ask":
+        return False
+    if PERMISSION_MODE == "auto-read":
+        return level == "read-only"
+    if PERMISSION_MODE == "trusted":
+        return level != "destructive"
+    return False
+
+
+def _check_permission(name, args, session_id=None):
+    """工具执行前的权限门禁，返回 (allowed, reason)"""
+    level = _permission_for_tool(name, args)
+    if _permission_allowed(level):
+        return True, "allowed"
+
+    print(f"\n权限请求: {name} 需要 {level} 权限")
+    print(f"当前模式: {PERMISSION_MODE} - {PERMISSION_DESCRIPTIONS.get(PERMISSION_MODE, '')}")
+    if name == "run_shell":
+        print(f"命令: {(args or {}).get('command', '')}")
+    elif args:
+        preview = json.dumps(args, ensure_ascii=False)
+        print(f"参数: {preview[:500]}")
+
+    answer = input("允许执行？[y]允许 / [n]拒绝: ").strip().lower()
+    decision = "allowed" if answer in ("y", "yes", "a", "allow") else "denied"
+    log_event(
+        "permission_decision",
+        session_id=session_id,
+        tool=name,
+        level=level,
+        mode=PERMISSION_MODE,
+        decision=decision,
+    )
+    if decision == "allowed":
+        return True, "allowed"
+    return False, f"权限拒绝: {name} 需要 {level} 权限"
 
 
 def _git_diff_text():
@@ -536,6 +720,10 @@ def _slash_help():
 /logs [n]                 显示最近 n 条审计日志
 /verbose on|off           开关详细工具日志
 /approve on|off           开关编辑后的 diff 审批
+/permission               显示当前权限模式
+/permission ask           所有工具操作都询问确认
+/permission auto-read     自动允许只读操作
+/permission trusted       自动允许非破坏性操作
 /tools                    显示可直接调用的工具命令
 /exit                     退出会话"""
 
@@ -547,9 +735,35 @@ read_file 路径 [起始行] [结束行]
 list_files [目录]
 git_status
 git_diff [路径]
+web_fetch URL
 remember 标签 内容
 forget_memory 记忆ID
 !命令                  执行 shell 命令"""
+
+
+def _permission_help():
+    lines = [
+        f"当前权限模式: {PERMISSION_MODE}",
+        "",
+        "权限等级:",
+    ]
+    lines.extend(f"- {level}" for level in PERMISSION_LEVELS)
+    lines.extend([
+        "",
+        "模式:",
+    ])
+    lines.extend(
+        f"- {mode}: {desc}"
+        for mode, desc in PERMISSION_DESCRIPTIONS.items()
+    )
+    lines.extend([
+        "",
+        "用法:",
+        "/permission ask",
+        "/permission auto-read",
+        "/permission trusted",
+    ])
+    return "\n".join(lines)
 
 
 class SlashCommandCompleter(Completer):
@@ -741,7 +955,7 @@ def _handle_session_slash(parts, session_id, messages):
 
 def _handle_slash_command(text, session_id, messages):
     """处理 slash command，返回 (handled, session_id, messages, should_exit)"""
-    global VERBOSE_TOOLS, APPROVE_DIFFS
+    global VERBOSE_TOOLS, APPROVE_DIFFS, PERMISSION_MODE
 
     stripped = text.strip()
     if stripped in ("/", "/help"):
@@ -819,6 +1033,19 @@ def _handle_slash_command(text, session_id, messages):
             return True, session_id, messages, False
         APPROVE_DIFFS = value == "on"
         print(f"diff 审批: {'on' if APPROVE_DIFFS else 'off'}")
+        return True, session_id, messages, False
+
+    if command == "/permission":
+        if len(parts) == 1:
+            print(_permission_help())
+            return True, session_id, messages, False
+        mode = parts[1].lower()
+        if mode not in PERMISSION_DESCRIPTIONS:
+            print("用法: /permission ask|auto-read|trusted")
+            return True, session_id, messages, False
+        PERMISSION_MODE = mode
+        log_event("permission_mode", session_id=session_id, mode=mode)
+        print(f"权限模式已切换为: {mode} - {PERMISSION_DESCRIPTIONS[mode]}")
         return True, session_id, messages, False
 
     print("未知 slash 命令。输入 / 查看可用命令。")
@@ -940,6 +1167,8 @@ def _format_tool_call(name, args):
         return f"list_files({args.get('path', '.')})"
     if name == "run_shell":
         return f"run_shell({args.get('command', '')})"
+    if name == "web_fetch":
+        return f"web_fetch({args.get('url', '')})"
     if name in ("write_file", "replace_in_file", "git_diff"):
         return f"{name}({args.get('path', '')})"
     if name == "apply_patch":
@@ -1016,6 +1245,7 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
             reasoning_content=assistant_msg.get("reasoning_content"),
         )
 
+        prepared_calls = []
         for tc in msg.tool_calls:
             func_name = tc.name
             try:
@@ -1043,22 +1273,62 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
                 print(f"  → {func_name}({json.dumps(func_args, ensure_ascii=False)})")
             else:
                 print(f"  → {_format_tool_call(func_name, func_args)}")
-            log_tool_call(session_id, func_name, func_args)
 
-            func = FUNC_MAP.get(func_name)
+            allowed, reason = _check_permission(func_name, func_args, session_id=session_id)
+            if not allowed:
+                result = reason
+                _print_tool_result(result)
+                tool_msg = {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result,
+                }
+                messages.append(tool_msg)
+                save_message(
+                    session_id,
+                    "tool",
+                    result,
+                    tool_call_id=tc.id,
+                    name=func_name,
+                )
+                continue
+
+            log_tool_call(session_id, func_name, func_args)
             before_diff = _git_diff_text() if func_name in EDIT_TOOLS else ""
             before_status = _git_status_short() if func_name in EDIT_TOOLS else ""
             snapshots = (
                 _snapshot_paths(_paths_for_edit_tool(func_name, func_args))
                 if func_name in EDIT_TOOLS else {}
             )
-            if not func:
-                result = f"未知工具: {func_name}"
-            else:
-                try:
-                    result = func(**func_args)
-                except Exception as e:
-                    result = f"工具执行失败: {type(e).__name__}: {e}"
+            prepared_calls.append({
+                "tc": tc,
+                "name": func_name,
+                "args": func_args,
+                "before_diff": before_diff,
+                "before_status": before_status,
+                "snapshots": snapshots,
+            })
+
+        if len(prepared_calls) > 1 and all(
+            item["name"] in PARALLEL_SAFE_TOOLS for item in prepared_calls
+        ):
+            print(f"  并行执行 {len(prepared_calls)} 个工具调用")
+            with ThreadPoolExecutor(max_workers=min(8, len(prepared_calls))) as executor:
+                futures = [
+                    executor.submit(_run_tool_function, item["name"], item["args"])
+                    for item in prepared_calls
+                ]
+                for item, future in zip(prepared_calls, futures):
+                    item["result"] = future.result()
+        else:
+            for item in prepared_calls:
+                item["result"] = _run_tool_function(item["name"], item["args"])
+
+        for item in prepared_calls:
+            tc = item["tc"]
+            func_name = item["name"]
+            result = item["result"]
+
             _print_tool_result(result)
             log_tool_result(session_id, func_name, result)
 
@@ -1066,9 +1336,9 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
                 decision = _review_diff_after_edit(
                     session_id,
                     func_name,
-                    before_diff,
-                    before_status,
-                    snapshots,
+                    item["before_diff"],
+                    item["before_status"],
+                    item["snapshots"],
                 )
                 if decision == "rolled_back":
                     result = f"{result}\n\n审批结果：用户已回滚本次文件改动"

@@ -4,7 +4,10 @@
 import locale
 import re
 import subprocess
+from html import unescape
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from .workspace import ROOT
 # 使用系统编码（Windows 上通常是 gbk）
@@ -199,6 +202,43 @@ def git_diff(path=None):
     if path:
         args.extend(["--", _rel_path(path)])
     return _run(args)
+
+
+def web_fetch(url, timeout=20, max_chars=20000):
+    """抓取网页文本内容。"""
+    if not str(url).lower().startswith(("http://", "https://")):
+        return "错误：web_fetch 只支持 http:// 或 https:// URL"
+
+    try:
+        request = Request(
+            str(url),
+            headers={
+                "User-Agent": "miniAgent/0.1 (+https://github.com/xinjia-ctrl/miniAgent)",
+            },
+        )
+        with urlopen(request, timeout=timeout) as resp:
+            content_type = resp.headers.get("content-type", "")
+            raw = resp.read(max_chars * 4)
+
+        encoding = "utf-8"
+        match = re.search(r"charset=([\w.-]+)", content_type, re.IGNORECASE)
+        if match:
+            encoding = match.group(1)
+
+        text = raw.decode(encoding, errors="replace")
+        text = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", text)
+        text = re.sub(r"(?s)<[^>]+>", " ", text)
+        text = unescape(text)
+        text = re.sub(r"\s+", " ", text).strip()
+        if len(text) > max_chars:
+            text = text[:max_chars] + f"\n... 已截断到 {max_chars} 字符"
+        return f"# {url}\ncontent_type: {content_type}\n\n{text}"
+    except HTTPError as e:
+        return f"错误：HTTP {e.code} {e.reason}"
+    except URLError as e:
+        return f"错误：网络请求失败 {e.reason}"
+    except Exception as e:
+        return f"错误：{type(e).__name__}: {e}"
 
 def run_shell(command, timeout=20):
     """执行 shell 命令（危险的！）"""
