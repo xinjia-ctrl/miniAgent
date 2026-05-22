@@ -1,5 +1,6 @@
 """常驻交互终端：ReAct 工具调用 + 会话管理 + 持久化存档"""
 
+import argparse
 import sys
 import json
 from models import create_backend
@@ -17,7 +18,8 @@ from context import trim_messages
 from memory import remember, forget as forget_memory, build_memory_block
 from workspace import get_context
 
-backend = create_backend(BACKEND)
+backend = None
+VERBOSE_TOOLS = False
 
 # Windows 终端编码兼容（强制 UTF-8 输出）
 if hasattr(sys.stdout, "reconfigure"):
@@ -225,7 +227,8 @@ SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下
 重要：
 - 当前系统是 Windows（不是 Linux/Mac），run_shell 中请使用 Windows 命令（dir、type、findstr 等），不要用 find、grep、xargs、wc 等 Linux 命令。
 - 修改文件时优先使用 replace_in_file 或 apply_patch，创建文件时使用 write_file。
-- 修改后请用 git_diff 检查变更。"""
+- 修改后请用 git_diff 检查变更。
+- 当用户询问“你是谁、你有什么功能、如何使用、有哪些命令”等关于助手自身能力的问题时，优先直接回答，不要为了回答这类问题读取文件或列目录。"""
 
 
 def _parse_repl(text):
@@ -288,6 +291,48 @@ def _exec_direct(name, args):
     except Exception as e:
         print(f"错误: {e}")
         return str(e)
+
+
+def _is_capability_question(text):
+    """识别关于助手自身能力和用法的常见问题"""
+    normalized = text.strip().lower()
+    if not normalized:
+        return False
+    if normalized in ("help", "帮助", "?"):
+        return True
+
+    keywords = (
+        "你有什么功能",
+        "你能做什么",
+        "有什么功能",
+        "有哪些功能",
+        "怎么使用",
+        "如何使用",
+        "使用方法",
+        "有哪些命令",
+        "你是谁",
+    )
+    return any(keyword in normalized for keyword in keywords)
+
+
+def _capability_answer():
+    """本地回答助手能力，避免为元问题触发工具调用"""
+    return """我是一个简易 CLI 代码 Agent，可以在当前工作区里帮你做这些事：
+
+- 读取文件、列目录，理解项目结构和已有代码。
+- 创建文件、精确替换代码片段、批量应用补丁。
+- 执行命令；遇到删除、Git 重置等危险命令会要求确认。
+- 查看 Git 状态和未暂存 diff。
+- 保存会话历史和少量长期记忆，支持续接上下文。
+
+常用直接命令：
+- `read_file 路径 [起始行] [结束行]`
+- `list_files [目录]`
+- `git_status`
+- `git_diff [路径]`
+- `!命令` 执行 shell 命令
+
+也可以直接用自然语言说需求，比如“帮我看一下这个项目结构”“给 main.py 加一个参数”“运行测试并修复报错”。"""
 
 
 def _clean(obj):
@@ -413,11 +458,58 @@ def _assistant_extra(msg):
     return extra
 
 
+def _format_tool_call(name, args):
+    if not args:
+        return f"{name}()"
+
+    if name == "read_file":
+        path = args.get("path", "")
+        start = args.get("start", 1)
+        end = args.get("end", 200)
+        return f"read_file({path}, {start}-{end})"
+    if name == "list_files":
+        return f"list_files({args.get('path', '.')})"
+    if name == "run_shell":
+        return f"run_shell({args.get('command', '')})"
+    if name in ("write_file", "replace_in_file", "git_diff"):
+        return f"{name}({args.get('path', '')})"
+    if name == "apply_patch":
+        patches = args.get("patches") or []
+        return f"apply_patch({len(patches)} 个补丁)"
+    return f"{name}(...)"
+
+
+def _print_tool_result(result):
+    text = str(result)
+    if VERBOSE_TOOLS:
+        print(f"    结果: {text[:500]}")
+        return
+
+    first_line = text.splitlines()[0] if text.splitlines() else ""
+    if first_line.startswith("exit_code:"):
+        print(f"    完成: {first_line}")
+    elif first_line.startswith("错误"):
+        print(f"    {first_line}")
+    else:
+        print(f"    完成: {len(text)} 字符")
+
+
 def _call_ai(messages):
     """调 API，返回 AssistantMessage"""
     _refresh_system_message(messages)
     messages = trim_messages(messages)
     return backend.chat(messages, tools=TOOLS)
+
+
+def _call_ai_stream(messages):
+    """流式调 API，返回聚合后的 AssistantMessage"""
+    _refresh_system_message(messages)
+    messages = trim_messages(messages)
+    return backend.chat_stream(
+        messages,
+        tools=TOOLS,
+        on_text=lambda text: print(text, end="", flush=True),
+    )
 
 
 def _handle_tool_calls(msg, messages, session_id, max_steps=15):
@@ -427,7 +519,7 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
         step += 1
 
         if not msg.tool_calls:
-            return msg.content or "", _assistant_extra(msg)
+            return msg.content or "", _assistant_extra(msg), msg.streamed
 
         assistant_msg = {
             "role": "assistant",
@@ -462,7 +554,7 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
             except json.JSONDecodeError as e:
                 result = f"工具参数 JSON 解析失败: {e}"
                 print(f"  → {func_name}(参数解析失败)")
-                print(f"    结果: {result}")
+                _print_tool_result(result)
                 tool_msg = {
                     "role": "tool",
                     "tool_call_id": tc.id,
@@ -478,7 +570,10 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
                 )
                 continue
 
-            print(f"  → {func_name}({json.dumps(func_args, ensure_ascii=False)})")
+            if VERBOSE_TOOLS:
+                print(f"  → {func_name}({json.dumps(func_args, ensure_ascii=False)})")
+            else:
+                print(f"  → {_format_tool_call(func_name, func_args)}")
 
             func = FUNC_MAP.get(func_name)
             if not func:
@@ -488,7 +583,7 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
                     result = func(**func_args)
                 except Exception as e:
                     result = f"工具执行失败: {type(e).__name__}: {e}"
-            print(f"    结果: {str(result)[:200]}")
+            _print_tool_result(result)
 
             tool_content = str(result).encode("utf-8", errors="replace").decode("utf-8")
             tool_msg = {
@@ -505,9 +600,14 @@ def _handle_tool_calls(msg, messages, session_id, max_steps=15):
                 name=func_name,
             )
 
-        msg = _call_ai(messages)
+        print("AI: ", end="", flush=True)
+        msg = _call_ai_stream(messages)
+        if msg.streamed:
+            print()
+        elif not msg.tool_calls and msg.content:
+            print(msg.content)
 
-    return msg.content or "(达到最大步骤数)", _assistant_extra(msg)
+    return msg.content or "(达到最大步骤数)", _assistant_extra(msg), msg.streamed
 
 
 def chat_loop(session_id):
@@ -525,21 +625,35 @@ def chat_loop(session_id):
     while True:
         try:
             user_input = input("你: ")
-            cmd = user_input.strip().lower()
+        except KeyboardInterrupt:
+            print("\n再见！")
+            break
 
-            if cmd in ("exit", "quit"):
-                print("再见！")
-                break
-            if cmd == "new":
-                session_id = create_session()
-                print("\n--- 新会话 ---")
-                sys_content = _build_system_content()
-                messages = [{"role": "system", "content": sys_content}]
-                continue
-            if cmd == "list":
-                _show_sessions()
-                continue
-            if not cmd:
+        cmd = user_input.strip().lower()
+
+        if cmd in ("exit", "quit"):
+            print("再见！")
+            break
+        if cmd == "new":
+            session_id = create_session()
+            print("\n--- 新会话 ---")
+            sys_content = _build_system_content()
+            messages = [{"role": "system", "content": sys_content}]
+            continue
+        if cmd in ("list", "sessions"):
+            _show_sessions()
+            continue
+        if not cmd:
+            continue
+
+        try:
+            if _is_capability_question(user_input):
+                full_reply = _capability_answer()
+                print(f"AI: {full_reply}")
+                save_message(session_id, "user", user_input)
+                save_message(session_id, "assistant", full_reply)
+                messages.append({"role": "user", "content": user_input})
+                messages.append({"role": "assistant", "content": full_reply})
                 continue
 
             # REPL 直执行：!command 或 工具名 参数
@@ -555,28 +669,92 @@ def chat_loop(session_id):
             messages.append({"role": "user", "content": user_input})
 
             print("AI: ", end="", flush=True)
-            msg = _call_ai(messages)
+            msg = _call_ai_stream(messages)
 
             if msg.tool_calls:
-                full_reply, assistant_extra = _handle_tool_calls(msg, messages, session_id)
+                if msg.streamed:
+                    print()
+                else:
+                    print()
+                full_reply, assistant_extra, streamed = _handle_tool_calls(msg, messages, session_id)
             else:
                 full_reply = msg.content or ""
                 assistant_extra = _assistant_extra(msg)
+                streamed = msg.streamed
 
-            print(full_reply)
+            if streamed:
+                print()
+            else:
+                print(full_reply)
             save_message(session_id, "assistant", full_reply, **assistant_extra)
             assistant_msg = {"role": "assistant", "content": full_reply}
             assistant_msg.update(assistant_extra)
             messages.append(assistant_msg)
 
         except KeyboardInterrupt:
-            print("\n再见！")
-            break
+            print("\n已取消当前操作，输入 exit 可退出。")
+            continue
+
+
+def _parse_args(argv):
+    """解析 CLI 参数"""
+    parser = argparse.ArgumentParser(
+        prog="mini",
+        description="miniAgent 本地 CLI 代码助手",
+    )
+    parser.add_argument(
+        "-c", "--continue",
+        dest="continue_last",
+        action="store_true",
+        help="续接最近一次会话",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="显示完整工具调用参数和结果片段",
+    )
+    parser.add_argument(
+        "--model",
+        help="临时覆盖本次运行使用的模型名",
+    )
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    subparsers.add_parser("sessions", help="列出历史会话")
+
+    resume_parser = subparsers.add_parser("resume", help="按会话 ID 续接")
+    resume_parser.add_argument("session_id", help="会话 ID")
+
+    subparsers.add_parser("new", help="创建新会话")
+
+    return parser.parse_args(argv)
+
+
+def _create_backend_from_args(args):
+    """根据 CLI 参数创建模型后端"""
+    config = dict(BACKEND)
+    if args.model:
+        config["model"] = args.model
+    return create_backend(config)
 
 
 def main():
     """入口：mini → 新会话，mini -c → 续接上次会话"""
-    if "-c" in sys.argv:
+    global backend, VERBOSE_TOOLS
+
+    args = _parse_args(sys.argv[1:])
+    VERBOSE_TOOLS = args.verbose
+
+    if args.command == "sessions":
+        _show_sessions()
+        return
+
+    backend = _create_backend_from_args(args)
+
+    if args.command == "resume":
+        session_id = args.session_id
+        _print_header(session_id)
+    elif args.continue_last:
         sessions = list_sessions()
         if sessions:
             session_id = sessions[0]["id"]

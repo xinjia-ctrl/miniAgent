@@ -26,6 +26,7 @@ class AssistantMessage:
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
     reasoning_content: str | None = None
+    streamed: bool = False
 
 
 # ===================================================================
@@ -46,6 +47,19 @@ class BaseClient(ABC):
     ) -> AssistantMessage:
         """发送聊天请求，返回统一格式的 AssistantMessage"""
         ...
+
+    def chat_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        on_text=None,
+    ) -> AssistantMessage:
+        """流式聊天。默认降级为非流式，子类可覆盖。"""
+        msg = self.chat(messages, tools=tools)
+        if on_text and msg.content:
+            on_text(msg.content)
+            msg.streamed = True
+        return msg
 
     @property
     @abstractmethod
@@ -104,6 +118,20 @@ class OpenAIClient(BaseClient):
             content=msg.content,
             tool_calls=tool_calls,
             reasoning_content=_get_reasoning_content(msg),
+        )
+
+    def chat_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        on_text=None,
+    ) -> AssistantMessage:
+        return _stream_openai_chat(
+            self.client,
+            self.model,
+            messages,
+            tools=tools,
+            on_text=on_text,
         )
 
 
@@ -275,6 +303,85 @@ class OllamaClient(BaseClient):
             tool_calls=tool_calls,
             reasoning_content=_get_reasoning_content(msg),
         )
+
+    def chat_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        on_text=None,
+    ) -> AssistantMessage:
+        return _stream_openai_chat(
+            self.client,
+            self.model,
+            messages,
+            tools=tools,
+            on_text=on_text,
+        )
+
+
+def _stream_openai_chat(client, model, messages, tools=None, on_text=None) -> AssistantMessage:
+    """聚合 OpenAI-compatible 流式响应，兼容文本、tool_calls 和 reasoning_content"""
+    kwargs = dict(model=model, messages=messages, stream=True)
+    if tools:
+        kwargs["tools"] = tools
+
+    content_parts = []
+    reasoning_parts = []
+    tool_calls = {}
+    streamed = False
+
+    for chunk in client.chat.completions.create(**kwargs):
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+
+        content = getattr(delta, "content", None)
+        if content:
+            content_parts.append(content)
+            streamed = True
+            if on_text:
+                on_text(content)
+
+        reasoning = _get_reasoning_content(delta)
+        if reasoning:
+            reasoning_parts.append(reasoning)
+
+        for tc in getattr(delta, "tool_calls", None) or []:
+            index = getattr(tc, "index", None)
+            if index is None:
+                index = len(tool_calls)
+            item = tool_calls.setdefault(index, {"id": "", "name": "", "arguments": ""})
+
+            tc_id = getattr(tc, "id", None)
+            if tc_id:
+                item["id"] = tc_id
+
+            fn = getattr(tc, "function", None)
+            if fn:
+                name = getattr(fn, "name", None)
+                arguments = getattr(fn, "arguments", None)
+                if name:
+                    item["name"] = name
+                if arguments:
+                    item["arguments"] += arguments
+
+    parsed_tool_calls = []
+    for _, item in sorted(tool_calls.items()):
+        if item["name"]:
+            parsed_tool_calls.append(
+                ToolCall(
+                    id=item["id"],
+                    name=item["name"],
+                    arguments=item["arguments"] or "{}",
+                )
+            )
+
+    return AssistantMessage(
+        content="".join(content_parts) or None,
+        tool_calls=parsed_tool_calls or None,
+        reasoning_content="".join(reasoning_parts) or None,
+        streamed=streamed,
+    )
 
 
 def _get_reasoning_content(message) -> str | None:
