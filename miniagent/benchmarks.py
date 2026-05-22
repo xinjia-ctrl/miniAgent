@@ -6,13 +6,17 @@ import json
 import uuid
 from contextlib import redirect_stdout
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from io import StringIO
 from pathlib import Path
 
+from . import memory
+from .context import measure_messages
 from .models import AssistantMessage, FakeModelClient, ToolCall
 from .run_store import RunStore
 from .runtime import AgentRuntime
 from . import session as session_module
+from .workspace import WorkspaceContext
 
 
 @dataclass
@@ -103,10 +107,95 @@ def bench_result_clipping(tmp_path):
     )
 
 
+def bench_security_redaction(tmp_path):
+    secret = "sk-benchmark-secret"
+    runtime = _runtime(tmp_path, FakeModelClient([]), {"leak": lambda: f"token={secret}"})
+    import miniagent.security as security
+    original = security.secret_env_items
+    security.secret_env_items = lambda env=None: [("DEEPSEEK_API_KEY", secret)]
+    try:
+        result = runtime.run_tool_function("leak", {})
+    finally:
+        security.secret_env_items = original
+    return BenchmarkResult(
+        name="security_redaction",
+        passed=secret not in result and "<redacted>" in result,
+        metrics={"result_chars": len(result)},
+        reason=result,
+    )
+
+
+def bench_context_compression(tmp_path):
+    messages = [
+        {"role": "system", "content": "s" * 90000},
+        {"role": "user", "content": "u" * 90000},
+        {"role": "assistant", "content": "a" * 90000},
+        {"role": "user", "content": "latest"},
+    ]
+    metrics = measure_messages(messages)
+    return BenchmarkResult(
+        name="context_compression",
+        passed=metrics["after_chars"] < metrics["before_chars"] and metrics["message_count_after"] >= 2,
+        metrics=metrics,
+        reason=str(metrics),
+    )
+
+
+def bench_memory_retrieval(tmp_path):
+    old_dir = memory.MEMORY_DIR
+    memory.MEMORY_DIR = tmp_path / "memory"
+    try:
+        memory.remember("部署", "生产环境使用蓝色密钥", importance=2, keywords=["deploy", "blue"])
+        old_id = memory.remember("杂项", "旧笔记", importance=5, keywords=["old"])
+        old_path = memory._path(old_id)
+        old_text = old_path.read_text(encoding="utf-8")
+        old_time = (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d %H:%M:%S")
+        old_path.write_text(old_text.replace(memory._now(), old_time), encoding="utf-8")
+        results = memory.recall(query="deploy blue", limit=2)
+    finally:
+        memory.MEMORY_DIR = old_dir
+    return BenchmarkResult(
+        name="memory_retrieval",
+        passed=bool(results) and results[0]["tag"] == "部署",
+        metrics={"results": len(results), "top_score": results[0].get("_score", 0) if results else 0},
+        reason=results[0]["content"] if results else "no results",
+    )
+
+
+def bench_workspace_drift(tmp_path):
+    import miniagent.workspace as workspace
+    old_docs = workspace.DOC_NAMES
+    old_instructions = workspace.INSTRUCTION_FILES
+    workspace.DOC_NAMES = ("README.md",)
+    workspace.INSTRUCTION_FILES = ()
+    try:
+        root = tmp_path / "workspace"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "README.md").write_text("v1\n", encoding="utf-8")
+        ws = WorkspaceContext(root)
+        ws.repo_root = root
+        ws.refresh()
+        (root / "README.md").write_text("v2\n", encoding="utf-8")
+        drift = ws.refresh_if_changed()
+    finally:
+        workspace.DOC_NAMES = old_docs
+        workspace.INSTRUCTION_FILES = old_instructions
+    return BenchmarkResult(
+        name="workspace_drift",
+        passed=drift["changed"] and drift["before"] != drift["after"],
+        metrics={"changed": drift["changed"]},
+        reason=json.dumps(drift, ensure_ascii=False),
+    )
+
+
 BENCHMARKS = (
     bench_parallel_order,
     bench_repeated_call_guard,
     bench_result_clipping,
+    bench_security_redaction,
+    bench_context_compression,
+    bench_memory_retrieval,
+    bench_workspace_drift,
 )
 
 

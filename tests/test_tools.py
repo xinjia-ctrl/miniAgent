@@ -45,3 +45,45 @@ def test_read_many_files_accepts_list(tmp_path, monkeypatch):
 
     assert "# a.txt" in result
     assert "# b.txt" in result
+
+
+def test_path_escape_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(tools, "_ROOT", tmp_path.resolve())
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+
+    try:
+        try:
+            result = tools.read_file("../outside.txt")
+        except ValueError as exc:
+            result = str(exc)
+    finally:
+        outside.unlink(missing_ok=True)
+
+    assert "路径逃逸" in result
+
+
+def test_apply_patch_requires_exact_match(tmp_path, monkeypatch):
+    monkeypatch.setattr(tools, "_ROOT", tmp_path.resolve())
+    path = tmp_path / "sample.txt"
+    path.write_text("dup\ndup\n", encoding="utf-8")
+
+    result = tools.apply_patch([
+        {"path": "sample.txt", "old_text": "dup", "new_text": "x"},
+    ])
+
+    assert "期望 1 次" in result
+    assert path.read_text(encoding="utf-8") == "dup\ndup\n"
+
+
+def test_binary_file_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(tools, "_ROOT", tmp_path.resolve())
+    path = tmp_path / "bin.dat"
+    path.write_bytes(b"a\x00b")
+
+    try:
+        result = tools.read_file("bin.dat")
+    except ValueError as exc:
+        result = str(exc)
+
+    assert "二进制" in result

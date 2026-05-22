@@ -543,13 +543,17 @@ def _classify_shell_permission(command):
 
     network_patterns = (
         r"\bpip\s+install\b",
+        r"\buv\s+pip\s+install\b",
         r"\bnpm\s+install\b",
         r"\bpnpm\s+install\b",
         r"\byarn\s+add\b",
+        r"\byarn\s+install\b",
         r"\bcurl\b",
         r"\bwget\b",
         r"\bgit\s+pull\b",
         r"\bgit\s+push\b",
+        r"\bgit\s+fetch\b",
+        r"\bgit\s+clone\b",
         r"\bgh\s+",
     )
     if any(re.search(pattern, low) for pattern in network_patterns):
@@ -564,6 +568,26 @@ def _classify_shell_permission(command):
     )
     if any(re.search(pattern, low) for pattern in git_write_patterns):
         return "git-write"
+
+    workspace_write_patterns = (
+        r">",
+        r">>",
+        r"\bcopy\b",
+        r"\bmove\b",
+        r"\bren\b",
+        r"\brename-item\b",
+        r"\bnew-item\b",
+        r"\bset-content\b",
+        r"\badd-content\b",
+        r"\bout-file\b",
+        r"\btouch\b",
+        r"\bmkdir\b",
+        r"\bmd\b",
+        r"\bpython\s+-c\b",
+        r"\bpy\s+-c\b",
+    )
+    if any(re.search(pattern, low) for pattern in workspace_write_patterns):
+        return "workspace-write"
 
     git_read_patterns = (
         r"^git\s+status\b",
