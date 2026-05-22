@@ -8,6 +8,7 @@ local_config.py
 .mini/memory/
 .mini/logs/
 .mini/runs/
+.mini/benchmarks/
 .mini_test_runtime/
 .mini_quality_smoke/
 .mini_quality_debug/

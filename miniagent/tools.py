@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .security import shell_env
 from .workspace import ROOT
 # 使用系统编码（Windows 上通常是 gbk）
 _ENCODING = locale.getpreferredencoding()
@@ -60,6 +61,17 @@ def _check_path(path):
     return p
 
 
+def _read_text_file(path):
+    data = path.read_bytes()
+    if b"\x00" in data[:4096]:
+        raise ValueError(f"拒绝处理疑似二进制文件: {path.relative_to(_ROOT)}")
+    return data.decode("utf-8", errors="replace")
+
+
+def _write_text_file(path, text):
+    path.write_text(str(text), encoding="utf-8")
+
+
 def _rel_path(path):
     """返回相对工作区路径，供 git 命令使用"""
     return str(_check_path(path).relative_to(_ROOT))
@@ -77,6 +89,7 @@ def _run(args, timeout=20):
             errors="replace",
             timeout=timeout,
             cwd=_ROOT,
+            env=shell_env(cwd=_ROOT),
         )
         stdout = result.stdout or ""
         stderr = result.stderr or ""
@@ -104,7 +117,7 @@ def read_file(path, start=1, end=1000):
     p = _check_path(path)
     if not p.is_file():
         return f"错误：文件不存在 {path}"
-    lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+    lines = _read_text_file(p).splitlines()
     # 按行号范围截取
     body = "\n".join(
         f"{i}: {line}" for i, line in enumerate(lines[start-1:end], start=start)
@@ -183,6 +196,7 @@ def search_text(pattern, path=".", max_results=200, context=0):
             errors="replace",
             timeout=20,
             cwd=_ROOT,
+            env=shell_env(cwd=_ROOT),
         )
         output = (result.stdout or result.stderr or "").strip()
         return output or "(no matches)"
@@ -195,8 +209,8 @@ def search_text(pattern, path=".", max_results=200, context=0):
     needle = pattern.lower()
     for file_path in files:
         try:
-            lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
+            lines = _read_text_file(file_path).splitlines()
+        except (OSError, ValueError):
             continue
         for number, line in enumerate(lines, start=1):
             if needle in line.lower():
@@ -233,7 +247,7 @@ def write_file(path, content, overwrite=False, create_dirs=False):
         p.parent.mkdir(parents=True, exist_ok=True)
     if p.exists() and not p.is_file():
         return f"错误：目标不是普通文件 {path}"
-    p.write_text(str(content), encoding="utf-8")
+    _write_text_file(p, content)
     return f"已写入 {path} ({len(str(content))} 字符)"
 
 
@@ -243,7 +257,7 @@ def replace_in_file(path, old_text, new_text, expected_replacements=1):
     if not p.is_file():
         return f"错误：文件不存在 {path}"
 
-    text = p.read_text(encoding="utf-8", errors="replace")
+    text = _read_text_file(p)
     count = text.count(old_text)
     if count == 0:
         return "错误：未找到 old_text，未修改文件"
@@ -253,7 +267,7 @@ def replace_in_file(path, old_text, new_text, expected_replacements=1):
             "为避免误替换未修改文件"
         )
 
-    p.write_text(text.replace(old_text, new_text), encoding="utf-8")
+    _write_text_file(p, text.replace(old_text, new_text))
     return f"已修改 {path}，替换 {count} 处"
 
 
@@ -282,7 +296,7 @@ def apply_patch(patches):
         p = _check_path(path)
         if not p.is_file():
             return f"错误：文件不存在 {path}"
-        text = p.read_text(encoding="utf-8", errors="replace")
+        text = _read_text_file(p)
         count = text.count(old_text)
         if count == 0:
             return f"错误：第 {i} 个 patch 未找到 old_text，未修改任何文件"
@@ -291,13 +305,23 @@ def apply_patch(patches):
                 f"错误：第 {i} 个 patch 的 old_text 出现 {count} 次，"
                 f"期望 {expected} 次，未修改任何文件"
             )
-        prepared.append((p, text.replace(old_text, new_text), path, count))
+        prepared.append((p, text, text.replace(old_text, new_text), path, count))
 
-    for p, new_text, _, _ in prepared:
-        p.write_text(new_text, encoding="utf-8")
+    written = []
+    try:
+        for p, old_content, new_content, _, _ in prepared:
+            _write_text_file(p, new_content)
+            written.append((p, old_content))
+    except OSError as exc:
+        for p, old_content in written:
+            try:
+                _write_text_file(p, old_content)
+            except OSError:
+                pass
+        return f"错误：写入补丁失败，已尝试回滚: {exc}"
 
     lines = [f"已应用 {len(prepared)} 个 patch"]
-    lines.extend(f"- {path}: 替换 {count} 处" for _, _, path, count in prepared)
+    lines.extend(f"- {path}: 替换 {count} 处" for _, _, _, path, count in prepared)
     return "\n".join(lines)
 
 
@@ -364,6 +388,7 @@ def run_shell(command, timeout=20):
             errors="replace",
             timeout=timeout,
             cwd=_ROOT,
+            env=shell_env(cwd=_ROOT),
         )
         stdout = result.stdout or ""
         stderr = result.stderr or ""

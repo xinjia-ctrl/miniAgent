@@ -26,7 +26,7 @@ from .session import (
     list_sessions, get_session, rename_session, delete_session,
 )
 from .context import trim_messages
-from .memory import remember, forget as forget_memory, build_memory_block
+from .memory import remember, forget as forget_memory, build_memory_block, memory_fingerprint
 from .workspace import get_context
 from .audit import log_event, log_tool_call, log_tool_result
 
@@ -40,6 +40,7 @@ except ImportError:
 
 backend = None
 runtime = None
+_SYSTEM_PROMPT_CACHE = {"key": None, "content": ""}
 ACTIVE_BACKEND_CONFIG = build_backend_config()
 VERBOSE_TOOLS = False
 APPROVE_DIFFS = True
@@ -1206,11 +1207,21 @@ def _print_header(session_id=None):
 def _build_system_content():
     """构建最新 system prompt：包含工作区快照和记忆"""
     ws = get_context()
-    ws.refresh()
+    drift = ws.refresh_if_changed()
+    mem_hash = memory_fingerprint()
+    cache_key = (ws.fingerprint(), mem_hash)
+    if _SYSTEM_PROMPT_CACHE["key"] == cache_key:
+        return _SYSTEM_PROMPT_CACHE["content"]
+
     ws_text = ws.text()
     mem_block = build_memory_block()
     extra = "\n\n".join(filter(None, [ws_text, mem_block]))
-    return SYSTEM_PROMPT + ("\n\n" + extra if extra else "")
+    content = SYSTEM_PROMPT + ("\n\n" + extra if extra else "")
+    _SYSTEM_PROMPT_CACHE["key"] = cache_key
+    _SYSTEM_PROMPT_CACHE["content"] = content
+    if drift["changed"]:
+        log_event("workspace_drift", before=drift["before"], after=drift["after"])
+    return content
 
 
 def _refresh_system_message(messages):

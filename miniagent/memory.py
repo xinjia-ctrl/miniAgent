@@ -198,3 +198,20 @@ def stats():
         "tags": list_tags(),
         "working_keys": list(WORKING_MEMORY.keys()),
     }
+
+
+def memory_fingerprint():
+    """计算记忆状态指纹，用于 system prefix 缓存失效判断。"""
+    _ensure_dir()
+    payload = {
+        "working": WORKING_MEMORY,
+        "persistent": [],
+    }
+    for path in sorted(MEMORY_DIR.glob("*.json")):
+        try:
+            payload["persistent"].append(json.loads(path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            continue
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    import hashlib
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()

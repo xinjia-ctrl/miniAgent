@@ -3,6 +3,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from .security import redact_obj, redact_text
 
 LOG_DIR = Path.cwd() / ".mini" / "logs"
 
@@ -56,7 +57,7 @@ def log_event(event_type, session_id=None, **payload):
         "type": event_type,
         "session_id": session_id,
     }
-    event.update(_clean_obj(payload))
+    event.update(_clean_obj(redact_obj(payload)))
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
@@ -78,6 +79,6 @@ def log_tool_result(session_id, name, result):
         name=name,
         result={
             "length": len(text),
-            "preview": text[:500],
+            "preview": redact_text(text[:500]),
         },
     )

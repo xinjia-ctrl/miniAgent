@@ -6,6 +6,7 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
+from .security import redact_obj
 
 
 def _now() -> str:
@@ -44,7 +45,7 @@ class RunStore:
             "timestamp": _now(),
             "type": event_type,
         }
-        event.update(_clean_obj(payload or {}))
+        event.update(_clean_obj(redact_obj(payload or {})))
         path = self.run_dir(run_id) / "trace.jsonl"
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
@@ -52,7 +53,7 @@ class RunStore:
     def write_status(self, run_id: str, status: dict) -> None:
         payload = {
             "updated_at": _now(),
-            **_clean_obj(status),
+            **_clean_obj(redact_obj(status)),
         }
         path = self.run_dir(run_id) / "task_status.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -60,7 +61,7 @@ class RunStore:
     def write_report(self, run_id: str, report: dict) -> None:
         payload = {
             "created_at": _now(),
-            **_clean_obj(report),
+            **_clean_obj(redact_obj(report)),
         }
         path = self.run_dir(run_id) / "report.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -92,6 +92,9 @@ Runtime 会跳过同一轮中的重复工具调用，并自动截断超长工具
 - 结构化记忆召回：结合 tag、关键词、重要性和时效衰减排序。
 - 工作区漂移检测：通过 SHA-256 指纹判断项目文档、指令和 Git 状态是否变化。
 - 上下文压缩指标：可对裁剪前后字符数和消息数量做实验记录。
+- 基准测试框架：`python scripts/run_benchmarks.py` 可运行确定性 Runtime 回归场景。
+- 安全脱敏：审计日志、run trace 和工具结果会自动隐藏环境变量中的 key/token/secret。
+- Shell 环境白名单：子进程只继承必要系统变量，避免把敏感配置透传给命令。
 
 ## 运行时结构
 
@@ -101,7 +104,7 @@ Runtime 会跳过同一轮中的重复工具调用，并自动截断超长工具
 miniagent/runtime.py    AgentRuntime，负责模型调用、工具调度、权限门禁和会话写入
 miniagent/run_store.py  RunStore，记录每次请求的 trace、状态和摘要
 miniagent/cli.py        终端交互、slash 命令和参数解析
-tests/test_runtime.py   FakeBackend 驱动的 Runtime 测试
+tests/test_runtime.py   FakeModelClient 驱动的 Runtime 测试
 ```
 
 每次直接工具执行或模型工具循环都会写入：

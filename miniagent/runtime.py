@@ -9,6 +9,7 @@ from typing import Callable
 
 from .context import trim_messages
 from .run_store import RunStore
+from .security import redact_text
 from .session import save_message
 
 
@@ -383,6 +384,7 @@ class AgentRuntime:
         return f"{name}:{encoded}"
 
     def _clip_tool_result(self, text: str) -> str:
+        text = redact_text(text)
         limit = max(1000, self.max_tool_result_chars)
         if len(text) <= limit:
             return text
