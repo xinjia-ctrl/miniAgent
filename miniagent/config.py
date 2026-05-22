@@ -1,11 +1,16 @@
 """配置：读取 API key 和后端配置"""
 
-from local_config import DEEPSEEK_API_KEY
+import os
+
+try:
+    from local_config import DEEPSEEK_API_KEY
+except ImportError:
+    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 try:
     from local_config import ANTHROPIC_API_KEY  # 可选
 except ImportError:
-    ANTHROPIC_API_KEY = None
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # ======== 后端选择 ========
 # provider: openai / anthropic / ollama

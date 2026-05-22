@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miniagent"
+version = "0.1.0"
+description = "轻量本地 CLI 代码助手"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openai",
+    "anthropic",
+    "prompt_toolkit",
+]
+
+[project.scripts]
+mini = "miniagent.cli:main"
+
+[tool.setuptools]
+packages = ["miniagent"]
