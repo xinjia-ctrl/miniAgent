@@ -64,7 +64,10 @@ destructive
 
 ```text
 read_file
+read_many_files
 list_files
+find_files
+search_text
 write_file
 replace_in_file
 apply_patch
@@ -74,9 +77,12 @@ web_fetch
 run_shell
 remember
 forget_memory
+delegate
 ```
 
 当模型一次请求多个只读或网络读取类工具时，miniAgent 会并行执行安全工具调用，例如多个 `read_file`、`git_diff`、`web_fetch`。涉及写文件、shell、审批和回滚的操作仍会串行执行。
+
+`delegate` 会启动一个只读子 agent 处理调查型子任务。子 agent 只能读取、搜索、查看 Git 只读信息和抓取网页，不能写文件或执行 shell。
 
 ## 运行时结构
 

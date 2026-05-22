@@ -3,6 +3,7 @@
 
 import locale
 import re
+import shutil
 import subprocess
 from html import unescape
 from pathlib import Path
@@ -13,6 +14,18 @@ from .workspace import ROOT
 # 使用系统编码（Windows 上通常是 gbk）
 _ENCODING = locale.getpreferredencoding()
 _ROOT = ROOT.resolve()
+_IGNORED_NAMES = {
+    ".git",
+    ".idea",
+    ".mini",
+    ".pytest_cache",
+    "__pycache__",
+    "node_modules",
+    "venv",
+    ".venv",
+    "dist",
+    "build",
+}
 
 _DANGEROUS_COMMANDS = (
     r"\brm\b",
@@ -94,7 +107,7 @@ def read_file(path, start=1, end=1000):
     lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
     # 按行号范围截取
     body = "\n".join(
-        f"{i+1}: {line}" for i, line in enumerate(lines[start-1:end], start=start)
+        f"{i}: {line}" for i, line in enumerate(lines[start-1:end], start=start)
     )
     return f"# {path}\n{body}"
 
@@ -110,6 +123,103 @@ def list_files(path="."):
         kind = "[D]" if item.is_dir() else "[F]"
         items.append(f"{kind} {item.name}")
     return "\n".join(items) if items else "(空目录)"
+
+
+def find_files(pattern="*", path=".", max_results=200):
+    """按文件名模式查找文件，自动跳过常见缓存和依赖目录。"""
+    base = _check_path(path)
+    if not base.exists():
+        return f"错误：路径不存在 {path}"
+    if not base.is_dir():
+        return f"错误：不是目录 {path}"
+
+    pattern = str(pattern or "*")
+    max_results = max(1, min(int(max_results), 1000))
+    matches = []
+    for item in base.rglob(pattern):
+        try:
+            rel = item.relative_to(_ROOT)
+        except ValueError:
+            continue
+        if any(part in _IGNORED_NAMES for part in rel.parts):
+            continue
+        if item.is_file():
+            matches.append(str(rel))
+        if len(matches) >= max_results:
+            break
+
+    return "\n".join(matches) if matches else "(no matches)"
+
+
+def search_text(pattern, path=".", max_results=200, context=0):
+    """在工作区内搜索文本，优先使用 rg。"""
+    pattern = str(pattern or "").strip()
+    if not pattern:
+        return "错误：pattern 不能为空"
+    base = _check_path(path)
+    if not base.exists():
+        return f"错误：路径不存在 {path}"
+
+    max_results = max(1, min(int(max_results), 1000))
+    context = max(0, min(int(context), 5))
+
+    if shutil.which("rg"):
+        args = [
+            "rg",
+            "-n",
+            "--smart-case",
+            "--max-count",
+            str(max_results),
+        ]
+        if context:
+            args.extend(["-C", str(context)])
+        args.extend([pattern, str(base)])
+        result = subprocess.run(
+            args,
+            shell=False,
+            capture_output=True,
+            text=True,
+            encoding=_ENCODING,
+            errors="replace",
+            timeout=20,
+            cwd=_ROOT,
+        )
+        output = (result.stdout or result.stderr or "").strip()
+        return output or "(no matches)"
+
+    matches = []
+    files = [base] if base.is_file() else [
+        item for item in base.rglob("*")
+        if item.is_file() and not any(part in _IGNORED_NAMES for part in item.relative_to(_ROOT).parts)
+    ]
+    needle = pattern.lower()
+    for file_path in files:
+        try:
+            lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for number, line in enumerate(lines, start=1):
+            if needle in line.lower():
+                matches.append(f"{file_path.relative_to(_ROOT)}:{number}:{line}")
+                if len(matches) >= max_results:
+                    return "\n".join(matches)
+    return "\n".join(matches) if matches else "(no matches)"
+
+
+def read_many_files(paths, start=1, end=400, max_files=10):
+    """一次读取多个文件的行号范围。"""
+    if isinstance(paths, str):
+        paths = [part.strip() for part in paths.split(",") if part.strip()]
+    if not isinstance(paths, list) or not paths:
+        return "错误：paths 必须是非空列表或逗号分隔字符串"
+
+    max_files = max(1, min(int(max_files), 20))
+    chunks = []
+    for path in paths[:max_files]:
+        chunks.append(read_file(path, start=start, end=end))
+    if len(paths) > max_files:
+        chunks.append(f"... 已限制读取前 {max_files} 个文件")
+    return "\n\n".join(chunks)
 
 
 def write_file(path, content, overwrite=False, create_dirs=False):

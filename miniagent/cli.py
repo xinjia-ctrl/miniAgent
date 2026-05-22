@@ -17,7 +17,7 @@ from .config import (
     unset_config_value,
 )
 from .tools import (
-    read_file, list_files, run_shell,
+    read_file, list_files, find_files, search_text, read_many_files, run_shell,
     write_file, replace_in_file, apply_patch,
     git_status, git_diff, web_fetch,
 )
@@ -44,7 +44,16 @@ ACTIVE_BACKEND_CONFIG = build_backend_config()
 VERBOSE_TOOLS = False
 APPROVE_DIFFS = True
 EDIT_TOOLS = {"write_file", "replace_in_file", "apply_patch"}
-PARALLEL_SAFE_TOOLS = {"read_file", "list_files", "git_status", "git_diff", "web_fetch"}
+PARALLEL_SAFE_TOOLS = {
+    "read_file",
+    "read_many_files",
+    "list_files",
+    "find_files",
+    "search_text",
+    "git_status",
+    "git_diff",
+    "web_fetch",
+}
 PERMISSION_MODE = "auto-read"
 PERMISSION_LEVELS = (
     "read-only",
@@ -61,9 +70,13 @@ PERMISSION_DESCRIPTIONS = {
 }
 TOOL_PERMISSIONS = {
     "read_file": "read-only",
+    "read_many_files": "read-only",
     "list_files": "read-only",
+    "find_files": "read-only",
+    "search_text": "read-only",
     "git_status": "read-only",
     "git_diff": "read-only",
+    "delegate": "read-only",
     "remember": "workspace-write",
     "forget_memory": "workspace-write",
     "write_file": "workspace-write",
@@ -133,6 +146,60 @@ TOOLS = [
                     "path": {"type": "string", "description": "目录路径", "default": "."},
                 },
                 "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_files",
+            "description": "按文件名模式查找工作区文件，自动跳过 .git、缓存和依赖目录。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "文件名模式，例如 *.py 或 test_*.py", "default": "*"},
+                    "path": {"type": "string", "description": "搜索起点目录", "default": "."},
+                    "max_results": {"type": "integer", "description": "最多返回多少条", "default": 200},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_text",
+            "description": "在工作区内搜索文本内容，优先使用 rg，适合定位函数、类、配置和报错。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "要搜索的文本或正则"},
+                    "path": {"type": "string", "description": "搜索路径", "default": "."},
+                    "max_results": {"type": "integer", "description": "最多返回多少条", "default": 200},
+                    "context": {"type": "integer", "description": "上下文行数 0-5", "default": 0},
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_many_files",
+            "description": "一次读取多个文件的指定行号范围，适合批量查看相关文件。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "paths": {
+                        "type": "array",
+                        "description": "文件路径列表",
+                        "items": {"type": "string"},
+                    },
+                    "start": {"type": "integer", "description": "起始行号", "default": 1},
+                    "end": {"type": "integer", "description": "结束行号", "default": 400},
+                    "max_files": {"type": "integer", "description": "最多读取文件数", "default": 10},
+                },
+                "required": ["paths"],
             },
         },
     },
@@ -284,11 +351,29 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate",
+            "description": "把一个调查型子任务交给只读子 agent。子 agent 只能读文件、搜索、看 Git 状态和抓取网页。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "要调查的问题或子任务"},
+                    "max_steps": {"type": "integer", "description": "子 agent 最多工具循环步数", "default": 3},
+                },
+                "required": ["task"],
+            },
+        },
+    },
 ]
 
 FUNC_MAP = {
     "read_file": read_file,
+    "read_many_files": read_many_files,
     "list_files": list_files,
+    "find_files": find_files,
+    "search_text": search_text,
     "run_shell": run_shell,
     "write_file": write_file,
     "replace_in_file": replace_in_file,
@@ -298,11 +383,15 @@ FUNC_MAP = {
     "web_fetch": web_fetch,
     "remember": remember,
     "forget_memory": forget_memory,
+    "delegate": lambda task, max_steps=3: _delegate_task(task, max_steps=max_steps),
 }
 
 SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下能力：
 - read_file: 读取文件
+- read_many_files: 批量读取多个文件
 - list_files: 列出目录
+- find_files: 按文件名查找文件
+- search_text: 搜索代码和文本
 - run_shell: 执行 shell 命令
 - write_file: 创建或覆盖文件
 - replace_in_file: 精确替换文件片段
@@ -312,6 +401,7 @@ SYSTEM_PROMPT = """你是一个可以操作电脑的 AI 智能体。你有以下
 - web_fetch: 抓取网页文本
 - remember: 记住信息（跨会话保留，对话结束也不会丢）
 - forget_memory: 删除已记住的信息
+- delegate: 交给只读子 agent 调查
 
 请按 ReAct 模式工作：
 1. 思考当前任务需要做什么（Thought）
@@ -355,8 +445,27 @@ def _parse_repl(text):
         end = int(tokens[2]) if len(tokens) > 2 else 1000
         return ("read_file", {"path": path, "start": start, "end": end})
 
+    if name == "read_many_files":
+        tokens = rest.split()
+        paths = tokens[0].split(",") if tokens else []
+        start = int(tokens[1]) if len(tokens) > 1 else 1
+        end = int(tokens[2]) if len(tokens) > 2 else 400
+        return ("read_many_files", {"paths": paths, "start": start, "end": end})
+
     if name == "list_files":
         return ("list_files", {"path": rest or "."})
+
+    if name == "find_files":
+        tokens = rest.split(maxsplit=1)
+        pattern = tokens[0] if tokens else "*"
+        path = tokens[1] if len(tokens) > 1 else "."
+        return ("find_files", {"pattern": pattern, "path": path})
+
+    if name == "search_text":
+        tokens = rest.split(maxsplit=1)
+        pattern = tokens[0] if tokens else ""
+        path = tokens[1] if len(tokens) > 1 else "."
+        return ("search_text", {"pattern": pattern, "path": path})
 
     if name == "run_shell":
         return ("run_shell", {"command": rest})
@@ -369,6 +478,9 @@ def _parse_repl(text):
 
     if name == "web_fetch":
         return ("web_fetch", {"url": rest.strip()})
+
+    if name == "delegate":
+        return ("delegate", {"task": rest.strip(), "max_steps": 3})
 
     if name == "remember":
         # remember tag content
@@ -666,9 +778,13 @@ def _capability_answer():
 
 常用直接命令：
 - `read_file 路径 [起始行] [结束行]`
+- `read_many_files 文件1,文件2 [起始行] [结束行]`
 - `list_files [目录]`
+- `find_files [模式] [目录]`
+- `search_text 关键词 [目录]`
 - `git_status`
 - `git_diff [路径]`
+- `delegate 调查任务`
 - `!命令` 执行 shell 命令
 
 也可以直接用自然语言说需求，比如“帮我看一下这个项目结构”“给 main.py 加一个参数”“运行测试并修复报错”。"""
@@ -703,10 +819,14 @@ def _tools_help():
     return """可直接调用的工具命令：
 
 read_file 路径 [起始行] [结束行]
+read_many_files 文件1,文件2 [起始行] [结束行]
 list_files [目录]
+find_files [模式] [目录]
+search_text 关键词 [目录]
 git_status
 git_diff [路径]
 web_fetch URL
+delegate 调查任务
 remember 标签 内容
 forget_memory 记忆ID
 !命令                  执行 shell 命令"""
@@ -1131,12 +1251,21 @@ def _format_tool_call(name, args):
         start = args.get("start", 1)
         end = args.get("end", 1000)
         return f"read_file({path}, {start}-{end})"
+    if name == "read_many_files":
+        paths = args.get("paths") or []
+        return f"read_many_files({len(paths)} 个文件)"
     if name == "list_files":
         return f"list_files({args.get('path', '.')})"
+    if name == "find_files":
+        return f"find_files({args.get('pattern', '*')}, {args.get('path', '.')})"
+    if name == "search_text":
+        return f"search_text({args.get('pattern', '')}, {args.get('path', '.')})"
     if name == "run_shell":
         return f"run_shell({args.get('command', '')})"
     if name == "web_fetch":
         return f"web_fetch({args.get('url', '')})"
+    if name == "delegate":
+        return f"delegate({str(args.get('task', ''))[:80]})"
     if name in ("write_file", "replace_in_file", "git_diff"):
         return f"{name}({args.get('path', '')})"
     if name == "apply_patch":
@@ -1184,6 +1313,103 @@ def _runtime():
             verbose_tools=lambda: VERBOSE_TOOLS,
         )
     return runtime
+
+
+def _delegate_task(task, max_steps=3):
+    """运行一个只读子 agent，用于调查型子任务。"""
+    task = str(task or "").strip()
+    if not task:
+        return "错误：delegate task 不能为空"
+    if backend is None:
+        return "错误：模型后端尚未初始化，无法 delegate"
+
+    allowed_tools = {
+        "read_file",
+        "read_many_files",
+        "list_files",
+        "find_files",
+        "search_text",
+        "git_status",
+        "git_diff",
+        "web_fetch",
+    }
+    child_tools = [
+        tool for tool in TOOLS
+        if tool.get("function", {}).get("name") in allowed_tools
+    ]
+    child_funcs = {
+        name: func
+        for name, func in FUNC_MAP.items()
+        if name in allowed_tools
+    }
+    child_runtime = AgentRuntime(
+        backend=backend,
+        tools=child_tools,
+        func_map=child_funcs,
+        refresh_system_message=lambda messages: None,
+        check_permission=lambda name, args, session_id=None: (
+            name in allowed_tools,
+            "allowed" if name in allowed_tools else f"delegate 只允许只读工具: {name}",
+        ),
+        log_tool_call=lambda session_id, name, args: log_tool_call(session_id, name, args),
+        log_tool_result=lambda session_id, name, result: log_tool_result(session_id, name, result),
+        print_tool_result=lambda result: None,
+        parallel_safe_tools=allowed_tools,
+        verbose_tools=lambda: False,
+    )
+
+    system = (
+        "你是 miniAgent 的只读子 agent。你只能调查、阅读和总结，不能写文件、执行 shell、"
+        "修改 Git 或请求用户输入。结论要简洁，必须说明你依据了哪些文件或搜索结果。\n\n"
+        + _build_system_content()
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": task},
+    ]
+
+    max_steps = max(1, min(int(max_steps), 8))
+    for _ in range(max_steps):
+        msg = backend.chat(trim_messages(messages), tools=child_tools)
+        if not msg.tool_calls:
+            return msg.content or "(delegate 没有返回内容)"
+
+        assistant_msg = {
+            "role": "assistant",
+            "content": msg.content,
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                    },
+                }
+                for tc in msg.tool_calls
+            ],
+        }
+        if msg.reasoning_content:
+            assistant_msg["reasoning_content"] = msg.reasoning_content
+        messages.append(assistant_msg)
+
+        for tc in msg.tool_calls:
+            try:
+                args = json.loads(tc.arguments or "{}")
+            except json.JSONDecodeError as exc:
+                result = f"工具参数 JSON 解析失败: {exc}"
+            else:
+                if tc.name not in allowed_tools:
+                    result = f"delegate 拒绝非只读工具: {tc.name}"
+                else:
+                    result = child_runtime.run_tool_function(tc.name, args)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": str(result),
+            })
+
+    return "delegate 已达到最大步数，未得到最终答案。"
 
 
 def _call_ai(messages):
