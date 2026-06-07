@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .permissions import analyze_shell_command
 from .security import shell_env
 from .workspace import ROOT
 # 使用系统编码（Windows 上通常是 gbk）
@@ -27,22 +28,6 @@ _IGNORED_NAMES = {
     "dist",
     "build",
 }
-
-_DANGEROUS_COMMANDS = (
-    r"\brm\b",
-    r"\bdel\b",
-    r"\berase\b",
-    r"\brmdir\b",
-    r"\bRemove-Item\b",
-    r"\bri\b",
-    r"\brd\b",
-    r"\bformat\b",
-    r"\bshutdown\b",
-    r"\breg\s+delete\b",
-    r"\bgit\s+reset\b",
-    r"\bgit\s+clean\b",
-    r"\bgit\s+checkout\b",
-)
 
 def _check_path(path):
     """安全校验：确保路径不逃逸出工作区
@@ -98,11 +83,6 @@ def _run(args, timeout=20):
         return f"exit_code: -1\nstdout:\n\nstderr:\n命令超时 ({timeout}s)"
     except Exception as e:
         return f"exit_code: -1\nstdout:\n\nstderr:\n{str(e)}"
-
-
-def _is_dangerous_command(command):
-    """粗粒度识别会删除、覆盖历史或影响系统的命令"""
-    return any(re.search(pattern, command, re.IGNORECASE) for pattern in _DANGEROUS_COMMANDS)
 
 
 def _confirm_dangerous(command):
@@ -375,13 +355,21 @@ def web_fetch(url, timeout=20, max_chars=20000):
         return f"错误：{type(e).__name__}: {e}"
 
 def run_shell(command, timeout=20):
-    """执行 shell 命令（危险的！）"""
-    if _is_dangerous_command(command) and not _confirm_dangerous(command):
+    """执行单条命令；拒绝复杂 shell 语法，避免绕过权限边界。"""
+    analysis = analyze_shell_command(command)
+    if not analysis.supported:
+        return f"exit_code: -1\nstdout:\n\nstderr:\n{analysis.unsupported_reason}"
+    if analysis.level == "destructive" and not _confirm_dangerous(command):
         return "exit_code: -1\nstdout:\n\nstderr:\n用户取消执行危险命令"
+
+    args = list(analysis.tokens)
+    if analysis.requires_cmd_builtin:
+        args = ["cmd.exe", "/d", "/c", *args]
+
     try:
         result = subprocess.run(
-            command,
-            shell=True,
+            args,
+            shell=False,
             capture_output=True,
             text=True,
             encoding=_ENCODING,

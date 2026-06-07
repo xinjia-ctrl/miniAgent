@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
-import re
+import shlex
 
 from .audit import log_event
 
@@ -22,6 +23,34 @@ PERMISSION_DESCRIPTIONS = {
     "trusted": "自动允许非破坏性操作，破坏性操作仍询问确认",
 }
 
+PERMISSION_RANK = {
+    "read-only": 0,
+    "workspace-write": 1,
+    "shell-write": 2,
+    "network": 3,
+    "git-write": 4,
+    "destructive": 5,
+}
+
+SHELL_OPERATORS = {"|", "&&", "||", ";", ">", ">>", "<", "&"}
+SHELL_OPERATOR_CHARS = ("|", ";", ">", "<", "&")
+REDIRECTION_OPERATOR_CHARS = (">", "<")
+CMD_BUILTINS = {"dir", "type", "findstr", "echo"}
+SHELL_INTERPRETERS = {"cmd", "cmd.exe", "powershell", "powershell.exe", "pwsh", "pwsh.exe"}
+
+
+@dataclasses.dataclass(frozen=True)
+class ShellCommandAnalysis:
+    command: str
+    tokens: list[str]
+    level: str
+    unsupported_reason: str = ""
+    requires_cmd_builtin: bool = False
+
+    @property
+    def supported(self) -> bool:
+        return not self.unsupported_reason
+
 
 def set_permission_mode(mode: str) -> None:
     global PERMISSION_MODE
@@ -34,97 +63,147 @@ def get_permission_mode() -> str:
     return PERMISSION_MODE
 
 
-def classify_shell_permission(command):
-    """按命令内容细分 shell 权限等级。"""
-    low = str(command).strip().lower()
+def _max_permission(levels):
+    return max(levels, key=lambda item: PERMISSION_RANK.get(item, 2))
 
-    destructive_patterns = (
-        r"\brm\b",
-        r"\bdel\b",
-        r"\berase\b",
-        r"\brmdir\b",
-        r"\bremove-item\b",
-        r"\bformat\b",
-        r"\bshutdown\b",
-        r"\bgit\s+reset\b",
-        r"\bgit\s+clean\b",
-        r"\bgit\s+checkout\b",
-        r"\bgit\s+restore\b",
-        r"\bgit\s+rebase\b",
-    )
-    if any(re.search(pattern, low) for pattern in destructive_patterns):
-        return "destructive"
 
-    network_patterns = (
-        r"\bpip\s+install\b",
-        r"\buv\s+pip\s+install\b",
-        r"\bnpm\s+install\b",
-        r"\bpnpm\s+install\b",
-        r"\byarn\s+add\b",
-        r"\byarn\s+install\b",
-        r"\bcurl\b",
-        r"\bwget\b",
-        r"\bgit\s+pull\b",
-        r"\bgit\s+push\b",
-        r"\bgit\s+fetch\b",
-        r"\bgit\s+clone\b",
-        r"\bgh\s+",
-    )
-    if any(re.search(pattern, low) for pattern in network_patterns):
-        return "network"
+def _split_command(command):
+    try:
+        return shlex.split(str(command or ""), posix=False)
+    except ValueError:
+        return []
 
-    git_write_patterns = (
-        r"\bgit\s+add\b",
-        r"\bgit\s+commit\b",
-        r"\bgit\s+merge\b",
-        r"\bgit\s+branch\b",
-        r"\bgit\s+tag\b",
-    )
-    if any(re.search(pattern, low) for pattern in git_write_patterns):
-        return "git-write"
 
-    workspace_write_patterns = (
-        r">",
-        r">>",
-        r"\bcopy\b",
-        r"\bmove\b",
-        r"\bren\b",
-        r"\brename-item\b",
-        r"\bnew-item\b",
-        r"\bset-content\b",
-        r"\badd-content\b",
-        r"\bout-file\b",
-        r"\btouch\b",
-        r"\bmkdir\b",
-        r"\bmd\b",
-        r"\bpython\s+-c\b",
-        r"\bpy\s+-c\b",
+def _command_name(tokens):
+    if not tokens:
+        return ""
+    return tokens[0].lower().removesuffix(".exe")
+
+
+def _contains_operator(tokens):
+    return any(
+        token.lower() in SHELL_OPERATORS
+        or any(char in token for char in SHELL_OPERATOR_CHARS)
+        for token in tokens
     )
-    if any(re.search(pattern, low) for pattern in workspace_write_patterns):
+
+
+def _contains_redirection(tokens):
+    return any(any(char in token for char in REDIRECTION_OPERATOR_CHARS) for token in tokens)
+
+
+def _is_git(tokens, subcommand):
+    return len(tokens) >= 2 and _command_name(tokens) == "git" and tokens[1].lower() == subcommand
+
+
+def _classify_tokens(tokens):
+    if not tokens:
+        return "shell-write"
+
+    lower = [token.lower() for token in tokens]
+    name = _command_name(tokens)
+
+    if _contains_redirection(tokens):
         return "workspace-write"
 
-    git_read_patterns = (
-        r"^git\s+status\b",
-        r"^git\s+diff\b",
-        r"^git\s+log\b",
-        r"^git\s+show\b",
-        r"^git\s+branch\b.*(--show-current|-v|--list)?$",
-    )
-    if any(re.search(pattern, low) for pattern in git_read_patterns):
-        return "read-only"
+    if name in {"rm", "del", "erase", "rmdir", "remove-item", "ri", "rd", "format", "shutdown"}:
+        return "destructive"
+    if name == "reg" and len(lower) >= 2 and lower[1] == "delete":
+        return "destructive"
+    if _is_git(tokens, "reset") or _is_git(tokens, "clean") or _is_git(tokens, "checkout"):
+        return "destructive"
+    if _is_git(tokens, "restore") or _is_git(tokens, "rebase"):
+        return "destructive"
 
-    read_only_patterns = (
-        r"^dir\b",
-        r"^type\b",
-        r"^findstr\b",
-        r"^rg\b",
-        r"^python\s+.*(--help|-h)\b",
-        r"^py\s+.*(--help|-h)\b",
-    )
-    if any(re.search(pattern, low) for pattern in read_only_patterns):
+    if _is_git(tokens, "status") or _is_git(tokens, "diff"):
+        return "read-only"
+    if _is_git(tokens, "log") or _is_git(tokens, "show"):
+        return "read-only"
+    if _is_git(tokens, "branch"):
+        branch_args = set(lower[2:])
+        if not branch_args or branch_args <= {"--show-current", "-v", "--list"}:
+            return "read-only"
+
+    if name in {"curl", "wget", "gh"}:
+        return "network"
+    if _is_git(tokens, "pull") or _is_git(tokens, "push"):
+        return "network"
+    if _is_git(tokens, "fetch") or _is_git(tokens, "clone"):
+        return "network"
+    if name in {"pip", "pip3"} and len(lower) >= 2 and lower[1] == "install":
+        return "network"
+    if name in {"python", "py"} and lower[1:4] in (["-m", "pip", "install"], ["-m", "pip3", "install"]):
+        return "network"
+    if name == "uv" and lower[1:3] == ["pip", "install"]:
+        return "network"
+    if name in {"npm", "pnpm"} and len(lower) >= 2 and lower[1] == "install":
+        return "network"
+    if name == "yarn" and len(lower) >= 2 and lower[1] in {"add", "install"}:
+        return "network"
+
+    if _is_git(tokens, "add") or _is_git(tokens, "commit") or _is_git(tokens, "merge"):
+        return "git-write"
+    if _is_git(tokens, "branch") or _is_git(tokens, "tag"):
+        return "git-write"
+
+    if name in {
+        "copy",
+        "move",
+        "ren",
+        "rename-item",
+        "new-item",
+        "set-content",
+        "add-content",
+        "out-file",
+        "touch",
+        "mkdir",
+        "md",
+    }:
+        return "workspace-write"
+    if name in {"python", "py"} and "-c" in lower:
+        return "workspace-write"
+
+    if name in {"dir", "type", "findstr", "rg"}:
+        return "read-only"
+    if name in {"python", "py"} and any(arg in {"--help", "-h"} for arg in lower[1:]):
         return "read-only"
 
     return "shell-write"
+
+
+def analyze_shell_command(command):
+    """解析 shell 命令，给权限门禁和执行层共享同一份判断结果。"""
+    command_text = str(command or "").strip()
+    tokens = _split_command(command_text)
+    if not command_text:
+        return ShellCommandAnalysis(command_text, [], "shell-write", "命令不能为空")
+    if not tokens:
+        return ShellCommandAnalysis(command_text, [], "shell-write", "命令解析失败")
+
+    levels = [_classify_tokens(tokens)]
+    if _contains_operator(tokens):
+        levels.append("workspace-write" if _contains_redirection(tokens) else "shell-write")
+
+    name = _command_name(tokens)
+    unsupported_reason = ""
+    requires_cmd_builtin = name in CMD_BUILTINS
+    if _contains_operator(tokens):
+        unsupported_reason = "run_shell 不支持管道、重定向或命令串联，请使用专用工具或单条命令"
+    elif name in SHELL_INTERPRETERS:
+        unsupported_reason = "run_shell 不支持嵌套 shell 解释器"
+
+    return ShellCommandAnalysis(
+        command=command_text,
+        tokens=tokens,
+        level=_max_permission(levels),
+        unsupported_reason=unsupported_reason,
+        requires_cmd_builtin=requires_cmd_builtin,
+    )
+
+
+def classify_shell_permission(command):
+    """按命令内容细分 shell 权限等级。"""
+    return analyze_shell_command(command).level
 
 
 def permission_for_tool(name, args, tool_permissions):

@@ -124,7 +124,7 @@ TOOLS = [
     ),
     _tool(
         "run_shell",
-        "执行 shell 命令。危险命令会要求用户确认，优先使用专用文件和 Git 工具。",
+        "执行单条简单命令；不支持管道、重定向、命令串联或嵌套 shell。优先使用专用文件和 Git 工具。",
         {
             "command": {"type": "string", "description": "要执行的命令"},
             "timeout": {"type": "integer", "description": "超时秒数", "default": 20},

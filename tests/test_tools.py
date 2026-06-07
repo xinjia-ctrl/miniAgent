@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from miniagent import tools
 from miniagent.tool_registry import parse_direct_command
 
@@ -96,3 +98,55 @@ def test_direct_command_invalid_line_number_uses_default():
     assert name == "read_file"
     assert args["start"] == 1
     assert args["end"] == 2
+
+
+def test_run_shell_uses_shell_false_for_external_command(monkeypatch):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr(tools.subprocess, "run", fake_run)
+
+    result = tools.run_shell("git status --short")
+
+    assert "exit_code: 0" in result
+    assert calls[0][0] == ["git", "status", "--short"]
+    assert calls[0][1]["shell"] is False
+
+
+def test_run_shell_maps_cmd_builtin_without_raw_shell(monkeypatch):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(tools.subprocess, "run", fake_run)
+
+    tools.run_shell("dir")
+
+    assert calls[0][0] == ["cmd.exe", "/d", "/c", "dir"]
+    assert calls[0][1]["shell"] is False
+
+
+def test_run_shell_rejects_redirection():
+    result = tools.run_shell("echo hi > a.txt")
+
+    assert "exit_code: -1" in result
+    assert "不支持管道、重定向或命令串联" in result
+
+
+def test_run_shell_rejects_compact_redirection():
+    result = tools.run_shell("echo hi>a.txt")
+
+    assert "exit_code: -1" in result
+    assert "不支持管道、重定向或命令串联" in result
+
+
+def test_run_shell_rejects_nested_shell():
+    result = tools.run_shell("powershell -Command Get-ChildItem")
+
+    assert "exit_code: -1" in result
+    assert "不支持嵌套 shell" in result

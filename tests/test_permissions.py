@@ -3,11 +3,13 @@ from miniagent import cli
 
 def test_shell_permission_network():
     assert cli._classify_shell_permission("pip install requests") == "network"
+    assert cli._classify_shell_permission("python -m pip install requests") == "network"
     assert cli._classify_shell_permission("curl https://example.com") == "network"
 
 
 def test_shell_permission_git_write():
     assert cli._classify_shell_permission("git add .") == "git-write"
+    assert cli._classify_shell_permission("git branch feature/demo") == "git-write"
     assert cli._classify_shell_permission("git commit -m test") == "git-write"
 
 
@@ -22,3 +24,8 @@ def test_shell_permission_destructive():
 
 def test_shell_permission_readonly():
     assert cli._classify_shell_permission("git status") == "read-only"
+    assert cli._classify_shell_permission("git branch --show-current") == "read-only"
+
+
+def test_shell_permission_pipeline_requires_shell_write():
+    assert cli._classify_shell_permission("type README.md | findstr mini") == "shell-write"
