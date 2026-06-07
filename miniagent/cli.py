@@ -854,9 +854,9 @@ def chat_loop(session_id):
     messages = _load_session_messages(session_id)
 
     if pt_prompt:
-        print(f"\n进入会话（输入 / 会自动显示命令，输入 exit 退出）\n")
+        print("\n进入会话（输入 / 会自动显示命令，输入 exit 退出）\n")
     else:
-        print(f"\n进入会话（输入 / 回车查看命令，输入 exit 退出）\n")
+        print("\n进入会话（输入 / 回车查看命令，输入 exit 退出）\n")
 
     while True:
         try:

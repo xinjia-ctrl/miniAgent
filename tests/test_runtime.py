@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from miniagent.models import AssistantMessage, FakeModelClient, ToolCall
 from miniagent.run_store import RunStore
