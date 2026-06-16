@@ -20,7 +20,7 @@ from miniagent.events import (
     EngineEvent,
 )
 from miniagent.messages import Message, tool_result_message, user_text
-from miniagent.model import ModelClient, create_model_client
+from miniagent.model import ModelClient, create_model_router
 from miniagent.permissions import PermissionManager
 from miniagent.storage import SessionRecord, SessionStorage
 from miniagent.tool_base import ToolContext, ToolRegistry
@@ -44,7 +44,7 @@ class QueryEngine:
     ):
         self.config = config or default_config()
         self.registry = registry or builtin_registry()
-        self.model_client = model_client or create_model_client(self.config.model)
+        self.model_client = model_client or create_model_router(self.config.model)
         self.storage = storage or SessionStorage(self.config.resolved_data_dir)
         self.context_builder = context_builder or ContextBuilder()
         self.audit_logger = audit_logger or AuditLogger(self.config.audit_path)

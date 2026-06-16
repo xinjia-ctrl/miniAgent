@@ -3,6 +3,7 @@ from __future__ import annotations
 from miniagent.messages import TextBlock, assistant_message
 from miniagent.config import ModelSettings
 from miniagent.model import (
+    AnthropicCompatibleModelClient,
     FakeModelClient,
     ModelRequest,
     OpenAICompatibleModelClient,
@@ -43,6 +44,10 @@ def test_create_model_client_from_settings() -> None:
     assert isinstance(
         create_model_client(ModelSettings(provider="openai-compatible", model="gpt-test")),
         OpenAICompatibleModelClient,
+    )
+    assert isinstance(
+        create_model_client(ModelSettings(provider="anthropic-compatible", model="claude-test")),
+        AnthropicCompatibleModelClient,
     )
 
 

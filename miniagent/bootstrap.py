@@ -7,7 +7,7 @@ from miniagent.audit import AuditLogger
 from miniagent.config import AgentConfig, ModelSettings, default_config
 from miniagent.context import ContextBuilder
 from miniagent.engine import QueryEngine
-from miniagent.model import ModelClient, create_model_client
+from miniagent.model import ModelClient, create_model_router
 from miniagent.permissions import PermissionManager
 from miniagent.storage import SessionRecord, SessionStorage
 from miniagent.tool_base import ToolRegistry
@@ -61,7 +61,7 @@ def build_agent_config(
 def build_runtime_container(config: AgentConfig) -> RuntimeContainer:
     return RuntimeContainer(
         config=config,
-        model_client=create_model_client(config.model),
+        model_client=create_model_router(config.model),
         registry=builtin_registry(),
         storage=SessionStorage(config.resolved_data_dir),
         context_builder=ContextBuilder(),

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 PermissionModeName = Literal["default", "accept_edits", "plan", "bypass"]
-ModelProviderName = Literal["fake", "openai-compatible"]
+ModelProviderName = Literal["fake", "openai-compatible", "anthropic-compatible"]
 
 
 class ModelSettings(BaseModel):
@@ -17,6 +17,9 @@ class ModelSettings(BaseModel):
     base_url: str = "https://api.openai.com/v1/chat/completions"
     api_key_env: str = "OPENAI_API_KEY"
     timeout_seconds: int = 60
+    max_retries: int = 1
+    max_output_tokens: int = 4096
+    anthropic_version: str = "2023-06-01"
 
 
 class AgentConfig(BaseModel):

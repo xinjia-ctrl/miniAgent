@@ -23,7 +23,11 @@ def callback(
     cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
     permission_mode: str = typer.Option("default", "--permission-mode", help="权限模式。"),
     model: str = typer.Option("fake", "--model", help="模型名称。fake 表示使用 FakeModelClient。"),
-    provider: str = typer.Option("fake", "--provider", help="模型 provider：fake 或 openai-compatible。"),
+    provider: str = typer.Option(
+        "fake",
+        "--provider",
+        help="模型 provider：fake、openai-compatible 或 anthropic-compatible。",
+    ),
     base_url: str = typer.Option(
         "https://api.openai.com/v1/chat/completions",
         "--base-url",
