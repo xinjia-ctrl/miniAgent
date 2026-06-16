@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pycode_agent.memory import MemoryStore
-from pycode_agent.tools.todo import TodoItem, TodoWriteInput, TodoWriteTool
+from miniagent.memory import MemoryStore
+from miniagent.tools.todo import TodoItem, TodoWriteInput, TodoWriteTool
 
 
 def test_memory_store_remember_recall_forget(tmp_path) -> None:

@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import asyncio
 
-from pycode_agent.engine import QueryEngine
-from pycode_agent.events import ASSISTANT_DELTA, ERROR, TOOL_ERROR, TOOL_RESULT
+from miniagent.engine import QueryEngine
+from miniagent.events import ASSISTANT_DELTA, ERROR, TOOL_ERROR, TOOL_RESULT
 
 
 async def run_repl(engine: QueryEngine) -> None:
-    print("pyagent REPL，输入 /exit 退出，/help 查看命令。")
+    print("miniagent REPL，输入 /exit 退出，/help 查看命令。")
     while True:
         try:
-            prompt = input("pyagent> ").strip()
+            prompt = input("miniagent> ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return

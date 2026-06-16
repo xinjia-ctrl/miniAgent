@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pycode_agent.tools.glob import GlobInput, GlobTool
-from pycode_agent.tools.grep import GrepInput, GrepTool
+from miniagent.tools.glob import GlobInput, GlobTool
+from miniagent.tools.grep import GrepInput, GrepTool
 
 
 async def test_glob_finds_python_files(workspace, tool_context) -> None:

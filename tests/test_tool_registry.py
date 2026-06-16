@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pycode_agent.tool_base import ToolRegistry
+from miniagent.tool_base import ToolRegistry
 from fakes import EchoTool
 
 

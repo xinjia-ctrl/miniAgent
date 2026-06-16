@@ -1,3 +1,3 @@
 python -m pytest
-python -m pycode_agent --help
-python -m pycode_agent --print "你好"
+python -m miniagent --help
+python -m miniagent --print "你好"

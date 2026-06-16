@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pycode_agent.config import default_config
-from pycode_agent.engine import QueryEngine
-from pycode_agent.events import DONE, TOOL_RESULT, TOOL_START
-from pycode_agent.model import FakeModelClient, tool_call_message
+from miniagent.config import default_config
+from miniagent.engine import QueryEngine
+from miniagent.events import DONE, TOOL_RESULT, TOOL_START
+from miniagent.model import FakeModelClient, tool_call_message
 
 
 async def test_engine_runs_tool_loop(workspace) -> None:

@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from pycode_agent.config import default_config
-from pycode_agent.tool_base import ToolContext
-from pycode_agent.tools import builtin_registry
+from miniagent.config import default_config
+from miniagent.tool_base import ToolContext
+from miniagent.tools import builtin_registry
 
 
 _COUNTER = itertools.count()

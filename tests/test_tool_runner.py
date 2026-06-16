@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pycode_agent.permissions import PermissionManager
-from pycode_agent.tool_base import ToolContext, ToolRegistry
-from pycode_agent.tool_runner import ToolCall, ToolRunner, partition_tool_calls
+from miniagent.permissions import PermissionManager
+from miniagent.tool_base import ToolContext, ToolRegistry
+from miniagent.tool_runner import ToolCall, ToolRunner, partition_tool_calls
 from fakes import EchoTool
 
 

@@ -4,8 +4,8 @@ import re
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.tool_base import BaseTool, ToolContext, ToolResult
-from pycode_agent.utils.subprocess import run_subprocess
+from miniagent.tool_base import BaseTool, ToolContext, ToolResult
+from miniagent.utils.subprocess import run_subprocess
 
 
 class ShellInput(BaseModel):

@@ -6,11 +6,11 @@ from typing import Optional
 
 import typer
 
-from pycode_agent.config import ModelSettings, default_config
-from pycode_agent.engine import QueryEngine
-from pycode_agent.events import ASSISTANT_DELTA, DONE, ERROR, TOOL_ERROR, TOOL_RESULT
-from pycode_agent.repl import run_repl_sync
-from pycode_agent.storage import SessionStorage
+from miniagent.config import ModelSettings, default_config
+from miniagent.engine import QueryEngine
+from miniagent.events import ASSISTANT_DELTA, DONE, ERROR, TOOL_ERROR, TOOL_RESULT
+from miniagent.repl import run_repl_sync
+from miniagent.storage import SessionStorage
 
 app = typer.Typer(add_completion=False, invoke_without_command=True)
 

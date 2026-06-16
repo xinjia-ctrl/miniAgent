@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.tool_base import BaseTool, EmptyInput, ToolContext, ToolResult
+from miniagent.tool_base import BaseTool, EmptyInput, ToolContext, ToolResult
 
 
 class TodoItem(BaseModel):

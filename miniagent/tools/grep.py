@@ -5,10 +5,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.tool_base import BaseTool, ToolContext, ToolResult
-from pycode_agent.tools.glob import EXCLUDED_DIRS
-from pycode_agent.utils.paths import relative_to_workspace, resolve_workspace_path
-from pycode_agent.utils.text import clip_text, is_probably_binary_file
+from miniagent.tool_base import BaseTool, ToolContext, ToolResult
+from miniagent.tools.glob import EXCLUDED_DIRS
+from miniagent.utils.paths import relative_to_workspace, resolve_workspace_path
+from miniagent.utils.text import clip_text, is_probably_binary_file
 
 
 class GrepInput(BaseModel):

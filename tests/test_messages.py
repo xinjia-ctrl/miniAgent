@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pycode_agent.messages import Message, TextBlock, ToolUseBlock, message_text, tool_result_message
+from miniagent.messages import Message, TextBlock, ToolUseBlock, message_text, tool_result_message
 
 
 def test_message_roundtrip_with_tool_use() -> None:

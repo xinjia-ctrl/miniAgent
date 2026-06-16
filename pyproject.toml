@@ -1,5 +1,5 @@
 [project]
-name = "pycode-agent"
+name = "miniAgent"
 version = "0.1.0"
 description = "一个用于学习 coding agent runtime 的最小 Python 实现"
 readme = "README.md"
@@ -16,11 +16,14 @@ dev = [
 ]
 
 [project.scripts]
-pyagent = "pycode_agent.cli:main"
+miniagent = "miniagent.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["miniagent*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

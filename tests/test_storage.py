@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pycode_agent.messages import user_text
-from pycode_agent.storage import SessionRecord, SessionStorage
+from miniagent.messages import user_text
+from miniagent.storage import SessionRecord, SessionStorage
 
 
 def test_session_storage_save_load_latest(tmp_path) -> None:

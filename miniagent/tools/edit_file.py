@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from pycode_agent.tool_base import BaseTool, ToolContext, ToolResult
-from pycode_agent.tools.write_file import _ensure_fresh_read
-from pycode_agent.utils.diff import unified_diff
-from pycode_agent.utils.paths import resolve_workspace_path
+from miniagent.tool_base import BaseTool, ToolContext, ToolResult
+from miniagent.tools.write_file import _ensure_fresh_read
+from miniagent.utils.diff import unified_diff
+from miniagent.utils.paths import resolve_workspace_path
 
 
 class EditFileInput(BaseModel):

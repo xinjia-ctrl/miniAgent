@@ -3,13 +3,13 @@ from __future__ import annotations
 import platform
 from typing import Any
 
-from pycode_agent.config import AgentConfig
-from pycode_agent.messages import Message, message_text
-from pycode_agent.model import ModelRequest
-from pycode_agent.prompts import build_system_prompt
-from pycode_agent.tool_base import ToolRegistry
-from pycode_agent.utils.git import git_status_summary
-from pycode_agent.utils.tokens import estimate_tokens
+from miniagent.config import AgentConfig
+from miniagent.messages import Message, message_text
+from miniagent.model import ModelRequest
+from miniagent.prompts import build_system_prompt
+from miniagent.tool_base import ToolRegistry
+from miniagent.utils.git import git_status_summary
+from miniagent.utils.tokens import estimate_tokens
 
 
 class ContextBuilder:

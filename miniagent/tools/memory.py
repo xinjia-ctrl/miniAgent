@@ -4,8 +4,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.memory import MemoryStore
-from pycode_agent.tool_base import BaseTool, ToolContext, ToolResult
+from miniagent.memory import MemoryStore
+from miniagent.tool_base import BaseTool, ToolContext, ToolResult
 
 
 class RememberInput(BaseModel):
@@ -64,5 +64,5 @@ class RecallMemoryTool(BaseTool):
 def _store(context: ToolContext) -> MemoryStore:
     path = context.state.get("memory_path")
     if not path:
-        path = str(Path(context.cwd) / ".pycode_agent" / "memory.json")
+        path = str(Path(context.cwd) / ".miniagent" / "memory.json")
     return MemoryStore(path)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pycode_agent.tool_base import ToolContext
-from pycode_agent.tools.shell import ShellInput, ShellTool, is_dangerous_command
+from miniagent.tool_base import ToolContext
+from miniagent.tools.shell import ShellInput, ShellTool, is_dangerous_command
 
 
 def test_dangerous_command_detection() -> None:

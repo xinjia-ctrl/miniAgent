@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from pycode_agent.tool_base import BaseTool, ToolContext, ToolResult
+from miniagent.tool_base import BaseTool, ToolContext, ToolResult
 
 
 class PlanStep(BaseModel):

@@ -8,9 +8,10 @@ __pycache__/
 venv/
 
 # Tool caches and runtime data
+.idea/
 .pytest_cache/
 .ruff_cache/
-.pycode_agent/
+.miniagent/
 test_workspaces/
 pytest_tmp/
 .pytest_tmp/
@@ -22,6 +23,13 @@ pytest-cache-files-*/
 .env
 .env.*
 local_config.py
+
+# pip temp files
+pip_tmp/
+
+# Runtime data
+.pycode_agent/
+.miniagent/
 
 # Markdown policy: keep README files, ignore other design notes.
 *.md

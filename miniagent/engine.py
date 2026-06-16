@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
-from pycode_agent.audit import AuditLogger
-from pycode_agent.config import AgentConfig, default_config
-from pycode_agent.context import ContextBuilder
-from pycode_agent.events import (
+from miniagent.audit import AuditLogger
+from miniagent.config import AgentConfig, default_config
+from miniagent.context import ContextBuilder
+from miniagent.events import (
     ASSISTANT_DELTA,
     ASSISTANT_MESSAGE,
     DONE,
@@ -19,14 +19,14 @@ from pycode_agent.events import (
     TOOL_START,
     EngineEvent,
 )
-from pycode_agent.messages import Message, tool_result_message, user_text
-from pycode_agent.model import ModelClient, create_model_client
-from pycode_agent.permissions import PermissionManager
-from pycode_agent.storage import SessionRecord, SessionStorage
-from pycode_agent.tool_base import ToolContext, ToolRegistry
-from pycode_agent.tool_runner import ToolCall, ToolRunner, parse_tool_calls
-from pycode_agent.tools import builtin_registry
-from pycode_agent.utils.ids import new_id
+from miniagent.messages import Message, tool_result_message, user_text
+from miniagent.model import ModelClient, create_model_client
+from miniagent.permissions import PermissionManager
+from miniagent.storage import SessionRecord, SessionStorage
+from miniagent.tool_base import ToolContext, ToolRegistry
+from miniagent.tool_runner import ToolCall, ToolRunner, parse_tool_calls
+from miniagent.tools import builtin_registry
+from miniagent.utils.ids import new_id
 
 
 class QueryEngine:

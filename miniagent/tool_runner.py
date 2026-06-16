@@ -5,11 +5,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from pycode_agent.messages import Message, ToolUseBlock
-from pycode_agent.permissions import PermissionDecision, PermissionManager
-from pycode_agent.tool_base import ToolContext, ToolRegistry, ToolResult
-from pycode_agent.utils.text import clip_text
-from pycode_agent.audit import AuditLogger
+from miniagent.messages import Message, ToolUseBlock
+from miniagent.permissions import PermissionDecision, PermissionManager
+from miniagent.tool_base import ToolContext, ToolRegistry, ToolResult
+from miniagent.utils.text import clip_text
+from miniagent.audit import AuditLogger
 
 
 class ToolCall(BaseModel):

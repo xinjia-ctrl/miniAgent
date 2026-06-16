@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.messages import Message
+from miniagent.messages import Message
 
 
 class SessionRecord(BaseModel):

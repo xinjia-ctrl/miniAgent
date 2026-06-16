@@ -6,7 +6,7 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from pycode_agent.tool_base import BaseTool, ToolContext
+from miniagent.tool_base import BaseTool, ToolContext
 
 
 class PermissionMode(str, Enum):

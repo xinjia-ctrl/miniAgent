@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from pycode_agent.permissions import PermissionManager
-from pycode_agent.tool_base import ToolContext
-from pycode_agent.tools.read_file import ReadFileInput, ReadFileTool
-from pycode_agent.tools.shell import ShellInput, ShellTool
-from pycode_agent.tools.write_file import WriteFileInput, WriteFileTool
+from miniagent.permissions import PermissionManager
+from miniagent.tool_base import ToolContext
+from miniagent.tools.read_file import ReadFileInput, ReadFileTool
+from miniagent.tools.shell import ShellInput, ShellTool
+from miniagent.tools.write_file import WriteFileInput, WriteFileTool
 
 
 async def test_default_allows_read_tool(workspace) -> None:

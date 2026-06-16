@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from pycode_agent.tool_base import BaseTool, ToolContext, ToolResult
+from miniagent.tool_base import BaseTool, ToolContext, ToolResult
 
 
 class EchoInput(BaseModel):

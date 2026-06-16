@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pycode_agent.context import ContextBuilder
-from pycode_agent.messages import user_text
+from miniagent.context import ContextBuilder
+from miniagent.messages import user_text
 
 
 def test_context_includes_tools_and_system_prompt(config, registry) -> None:

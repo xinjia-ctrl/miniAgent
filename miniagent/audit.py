@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from pycode_agent.utils.jsonl import append_jsonl
+from miniagent.utils.jsonl import append_jsonl
 
 
 SENSITIVE_KEYS = {"api_key", "token", "password", "secret"}

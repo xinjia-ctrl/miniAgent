@@ -10,7 +10,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.messages import (
+from miniagent.messages import (
     ContentBlock,
     Message,
     TextBlock,
@@ -20,9 +20,9 @@ from pycode_agent.messages import (
     assistant_text,
     message_text,
 )
-from pycode_agent.config import ModelSettings
-from pycode_agent.utils.ids import new_id
-from pycode_agent.utils.text import clip_text
+from miniagent.config import ModelSettings
+from miniagent.utils.ids import new_id
+from miniagent.utils.text import clip_text
 
 
 class ModelRequest(BaseModel):

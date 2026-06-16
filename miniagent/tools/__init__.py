@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from pycode_agent.tool_base import ToolRegistry
-from pycode_agent.tools.edit_file import EditFileTool
-from pycode_agent.tools.glob import GlobTool
-from pycode_agent.tools.grep import GrepTool
-from pycode_agent.tools.memory import ForgetMemoryTool, RecallMemoryTool, RememberTool
-from pycode_agent.tools.plan import PlanUpdateTool
-from pycode_agent.tools.read_file import ReadFileTool
-from pycode_agent.tools.shell import ShellTool
-from pycode_agent.tools.todo import TodoReadTool, TodoWriteTool
-from pycode_agent.tools.write_file import WriteFileTool
+from miniagent.tool_base import ToolRegistry
+from miniagent.tools.edit_file import EditFileTool
+from miniagent.tools.glob import GlobTool
+from miniagent.tools.grep import GrepTool
+from miniagent.tools.memory import ForgetMemoryTool, RecallMemoryTool, RememberTool
+from miniagent.tools.plan import PlanUpdateTool
+from miniagent.tools.read_file import ReadFileTool
+from miniagent.tools.shell import ShellTool
+from miniagent.tools.todo import TodoReadTool, TodoWriteTool
+from miniagent.tools.write_file import WriteFileTool
 
 
 def register_builtin_tools(registry: ToolRegistry) -> None:

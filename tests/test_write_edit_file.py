@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pycode_agent.tools.edit_file import EditFileInput, EditFileTool
-from pycode_agent.tools.read_file import ReadFileInput, ReadFileTool
-from pycode_agent.tools.write_file import WriteFileInput, WriteFileTool
+from miniagent.tools.edit_file import EditFileInput, EditFileTool
+from miniagent.tools.read_file import ReadFileInput, ReadFileTool
+from miniagent.tools.write_file import WriteFileInput, WriteFileTool
 
 
 async def test_write_file_requires_read_before_overwrite(workspace, tool_context) -> None:

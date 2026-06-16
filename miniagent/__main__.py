@@ -1,4 +1,4 @@
-from pycode_agent.cli import main
+from miniagent.cli import main
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.utils.ids import new_id
+from miniagent.utils.ids import new_id
 
 
 class TextBlock(BaseModel):

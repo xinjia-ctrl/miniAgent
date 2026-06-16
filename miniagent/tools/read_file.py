@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.tool_base import BaseTool, ToolContext, ToolResult
-from pycode_agent.utils.paths import resolve_workspace_path
-from pycode_agent.utils.text import clip_text, format_with_line_numbers, read_text
+from miniagent.tool_base import BaseTool, ToolContext, ToolResult
+from miniagent.utils.paths import resolve_workspace_path
+from miniagent.utils.text import clip_text, format_with_line_numbers, read_text
 
 
 class ReadFileInput(BaseModel):

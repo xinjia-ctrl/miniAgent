@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.utils.ids import new_id
+from miniagent.utils.ids import new_id
 
 
 class MemoryItem(BaseModel):

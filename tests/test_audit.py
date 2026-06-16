@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pycode_agent.audit import AuditLogger
+from miniagent.audit import AuditLogger
 
 
 def test_audit_logger_redacts_sensitive_values(tmp_path) -> None:

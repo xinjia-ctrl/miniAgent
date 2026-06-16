@@ -1,11 +1,11 @@
-# pycode-agent
+# miniAgent
 
-`pycode-agent` 是一个从零实现的命令行 coding agent 学习项目。它复刻的是 Claude Code 类 coding agent 的核心架构思想：模型负责提出行动，runtime 负责上下文、工具执行、权限、安全、会话、审计和评测。
+`miniAgent` 是一个从零实现的命令行 coding agent 学习项目。它复刻的是 Claude Code 类 coding agent 的核心架构思想：模型负责提出行动，runtime 负责上下文、工具执行、权限、安全、会话、审计和评测。
 
 ## 功能特性
 
-- CLI：支持 `pyagent --help`、`pyagent --print "问题"`、`pyagent doctor`
-- REPL：直接运行 `pyagent` 可以进入多轮交互
+- CLI：支持 `miniagent --help`、`miniagent --print "问题"`、`miniagent doctor`
+- REPL：直接运行 `miniagent` 可以进入多轮交互
 - Agent loop：`QueryEngine` 统一处理用户输入、模型输出、工具调用和工具结果回灌
 - Harness：默认使用 `FakeModelClient`，测试不依赖真实模型
 - 模型适配：支持最小 OpenAI-compatible chat completions 适配器
@@ -31,9 +31,9 @@
 
 ```powershell
 python -m pip install -e ".[dev]"
-pyagent --help
-pyagent --print "你好"
-python -m pycode_agent --print "读取 README.md 并总结"
+miniagent --help
+miniagent --print "你好"
+python -m miniagent --print "读取 README.md 并总结"
 ```
 
 ## 配置说明
@@ -44,24 +44,24 @@ python -m pycode_agent --print "读取 README.md 并总结"
 
 ```powershell
 $env:OPENAI_API_KEY="你的密钥"
-pyagent --provider openai-compatible --model gpt-4.1-mini --print "读取 README.md 并总结"
+miniagent --provider openai-compatible --model gpt-4.1-mini --print "读取 README.md 并总结"
 ```
 
 可选环境变量：
 
-- `PYCODE_AGENT_PROVIDER`：默认 provider
-- `PYCODE_AGENT_MODEL`：默认模型名
+- `MINIAGENT_PROVIDER`：默认 provider
+- `MINIAGENT_MODEL`：默认模型名
 - `OPENAI_BASE_URL`：OpenAI-compatible chat completions URL
 - `OPENAI_API_KEY`：API key
 
-运行数据默认写入工作区内 `.pycode_agent/`，包括会话和审计日志。该目录已加入 `.gitignore`。
+运行数据默认写入工作区内 `.miniagent/`，包括会话和审计日志。该目录已加入 `.gitignore`。
 
 ## 常用命令
 
 ```powershell
 pytest
 pytest tests/test_engine.py
-pyagent doctor
+miniagent doctor
 python .\evals\runner.py --fake
 .\scripts\smoke.ps1
 ```
@@ -69,7 +69,7 @@ python .\evals\runner.py --fake
 ## 项目结构
 
 ```text
-pycode_agent/
+miniagent/
   cli.py            # 命令行入口
   repl.py           # 交互循环
   engine.py         # ReAct 主循环和事件流
@@ -95,19 +95,19 @@ scripts/smoke.ps1   # 冒烟脚本
 非交互执行一次请求：
 
 ```powershell
-pyagent --print "读取 README.md 并总结"
+miniagent --print "读取 README.md 并总结"
 ```
 
 继续最近会话：
 
 ```powershell
-pyagent --continue --print "继续刚才的任务"
+miniagent --continue --print "继续刚才的任务"
 ```
 
 查看诊断信息：
 
 ```powershell
-pyagent doctor
+miniagent doctor
 ```
 
 ## 开发说明

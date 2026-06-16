@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pycode_agent.messages import TextBlock, assistant_message
-from pycode_agent.config import ModelSettings
-from pycode_agent.model import (
+from miniagent.messages import TextBlock, assistant_message
+from miniagent.config import ModelSettings
+from miniagent.model import (
     FakeModelClient,
     ModelRequest,
     OpenAICompatibleModelClient,

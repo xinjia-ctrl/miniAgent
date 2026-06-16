@@ -11,10 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from evals.metrics import EvalMetrics
-from pycode_agent.config import default_config
-from pycode_agent.engine import QueryEngine
-from pycode_agent.events import DONE, ERROR, PERMISSION_DECISION, TOOL_ERROR, TOOL_RESULT
-from pycode_agent.model import FakeModelClient, tool_call_message
+from miniagent.config import default_config
+from miniagent.engine import QueryEngine
+from miniagent.events import DONE, ERROR, PERMISSION_DECISION, TOOL_ERROR, TOOL_RESULT
+from miniagent.model import FakeModelClient, tool_call_message
 
 
 async def run_case(path: Path) -> dict[str, object]:
@@ -58,7 +58,7 @@ async def run_case(path: Path) -> dict[str, object]:
 def _prepare_workspace(path: Path, case: dict[str, object]) -> Path:
     if "workspace_files" not in case:
         return ROOT
-    workspace = ROOT / ".pycode_agent" / "eval_workspaces" / path.stem
+    workspace = ROOT / ".miniagent" / "eval_workspaces" / path.stem
     if workspace.exists():
         shutil.rmtree(workspace, ignore_errors=True)
     workspace.mkdir(parents=True, exist_ok=True)

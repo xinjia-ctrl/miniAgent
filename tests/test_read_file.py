@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pycode_agent.tools.read_file import ReadFileInput, ReadFileTool
+from miniagent.tools.read_file import ReadFileInput, ReadFileTool
 
 
 async def test_read_file_returns_line_numbers(workspace, tool_context) -> None:

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from pycode_agent.utils.text import clip_text
+from miniagent.utils.text import clip_text
 
 
 class SubprocessResult(BaseModel):

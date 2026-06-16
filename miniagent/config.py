@@ -34,7 +34,7 @@ class AgentConfig(BaseModel):
     def resolved_data_dir(self) -> Path:
         if self.data_dir:
             return Path(self.data_dir)
-        return Path(self.cwd) / ".pycode_agent"
+        return Path(self.cwd) / ".miniagent"
 
     @property
     def audit_path(self) -> Path:
@@ -43,8 +43,8 @@ class AgentConfig(BaseModel):
 
 def default_config(cwd: str | Path | None = None, **overrides: object) -> AgentConfig:
     values = {"cwd": str(cwd or Path.cwd())}
-    model_name = os.environ.get("PYCODE_AGENT_MODEL")
-    provider = os.environ.get("PYCODE_AGENT_PROVIDER")
+    model_name = os.environ.get("MINIAGENT_MODEL")
+    provider = os.environ.get("MINIAGENT_PROVIDER")
     base_url = os.environ.get("OPENAI_BASE_URL")
     model_values: dict[str, object] = {}
     if model_name:

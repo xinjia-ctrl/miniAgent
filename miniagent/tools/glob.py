@@ -4,8 +4,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from pycode_agent.tool_base import BaseTool, ToolContext, ToolResult
-from pycode_agent.utils.paths import relative_to_workspace, resolve_workspace_path
+from miniagent.tool_base import BaseTool, ToolContext, ToolResult
+from miniagent.utils.paths import relative_to_workspace, resolve_workspace_path
 
 
 EXCLUDED_DIRS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache"}
