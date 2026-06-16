@@ -13,6 +13,8 @@ from miniagent.events import ASSISTANT_DELTA, DONE, ERROR, TOOL_ERROR, TOOL_RESU
 from miniagent.repl import run_repl_sync
 
 app = typer.Typer(add_completion=False, invoke_without_command=True)
+context_app = typer.Typer(help="查看上下文预算和 compact 状态。")
+app.add_typer(context_app, name="context")
 
 
 @app.callback(invoke_without_command=True)
@@ -65,6 +67,41 @@ def doctor(
     application = MiniAgentApplication.from_config(config)
     for key, value in application.diagnostics().items():
         typer.echo(f"{key}: {value}")
+
+
+@context_app.command("inspect")
+def inspect_context(
+    last: bool = typer.Option(False, "--last", help="查看最近一次会话的上下文状态。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    if not last:
+        typer.echo("请使用 --last 查看最近一次会话的上下文状态。")
+        raise typer.Exit(code=1)
+    config = build_agent_config(cwd=cwd)
+    application = MiniAgentApplication.from_config(config)
+    snapshot = application.inspect_latest_context()
+    if snapshot is None:
+        typer.echo("没有找到最近会话。")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"session_id: {snapshot['session_id']}")
+    last_context = snapshot.get("last_context")
+    if isinstance(last_context, dict):
+        typer.echo(f"selected_message_count: {last_context.get('selected_message_count', 0)}")
+        typer.echo(f"total_message_count: {last_context.get('total_message_count', 0)}")
+        typer.echo(f"compacted_message_count: {last_context.get('compacted_message_count', 0)}")
+        typer.echo(f"budget: {last_context.get('budget', {})}")
+        typer.echo(f"usage: {last_context.get('usage', {})}")
+
+    summary = snapshot.get("compact_summary")
+    if isinstance(summary, dict) and summary.get("text"):
+        typer.echo("compact_summary:")
+        typer.echo(summary["text"])
+    elif isinstance(summary, str) and summary:
+        typer.echo("compact_summary:")
+        typer.echo(summary)
+    else:
+        typer.echo("compact_summary: <empty>")
 
 
 async def _run_print(engine: QueryEngine, prompt: str) -> None:
