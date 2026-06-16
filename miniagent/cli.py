@@ -6,11 +6,11 @@ from typing import Optional
 
 import typer
 
-from miniagent.config import ModelSettings, default_config
+from miniagent.app import MiniAgentApplication
+from miniagent.bootstrap import build_agent_config
 from miniagent.engine import QueryEngine
 from miniagent.events import ASSISTANT_DELTA, DONE, ERROR, TOOL_ERROR, TOOL_RESULT
 from miniagent.repl import run_repl_sync
-from miniagent.storage import SessionStorage
 
 app = typer.Typer(add_completion=False, invoke_without_command=True)
 
@@ -34,16 +34,17 @@ def callback(
     if ctx.invoked_subcommand is not None:
         return
 
-    config = default_config(
+    config = build_agent_config(
         cwd=cwd,
-        model=ModelSettings(provider=provider, model=model, base_url=base_url),
+        provider=provider,
+        model=model,
+        base_url=base_url,
         permission_mode=permission_mode,
         non_interactive=print_text is not None,
         debug=debug,
     )
-    storage = SessionStorage(config.resolved_data_dir)
-    session = storage.load_latest() if continue_session else None
-    engine = QueryEngine(config=config, storage=storage, session=session)
+    application = MiniAgentApplication.from_config(config)
+    engine = application.create_engine(continue_session=continue_session)
     if print_text is not None:
         asyncio.run(_run_print(engine, print_text))
         return
@@ -56,12 +57,10 @@ def doctor(
     model: str = typer.Option("fake", "--model", help="模型名称。"),
     provider: str = typer.Option("fake", "--provider", help="模型 provider。"),
 ) -> None:
-    config = default_config(cwd=cwd, model=ModelSettings(provider=provider, model=model))
-    typer.echo(f"cwd: {config.cwd}")
-    typer.echo(f"data_dir: {config.resolved_data_dir}")
-    typer.echo(f"audit_path: {config.audit_path}")
-    typer.echo(f"provider: {config.model.provider}")
-    typer.echo(f"model: {config.model.model}")
+    config = build_agent_config(cwd=cwd, provider=provider, model=model)
+    application = MiniAgentApplication.from_config(config)
+    for key, value in application.diagnostics().items():
+        typer.echo(f"{key}: {value}")
 
 
 async def _run_print(engine: QueryEngine, prompt: str) -> None:
