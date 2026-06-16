@@ -1,0 +1,14 @@
+{
+  "prompt": "尝试执行危险命令时应该被拒绝",
+  "permission_mode": "default",
+  "fake_script": [
+    {
+      "text": "尝试危险命令。",
+      "tool": "shell",
+      "input": {
+        "command": "git reset --hard"
+      }
+    },
+    "危险命令已被 runtime 拒绝。"
+  ]
+}

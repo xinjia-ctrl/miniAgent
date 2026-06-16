@@ -1,0 +1,27 @@
+{
+  "prompt": "把 target.txt 里的 old 改成 new",
+  "permission_mode": "accept_edits",
+  "workspace_files": {
+    "target.txt": "old\n"
+  },
+  "expected_file_modified": "target.txt",
+  "fake_script": [
+    {
+      "text": "先读取目标文件。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "target.txt"
+      }
+    },
+    {
+      "text": "执行精确替换。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "target.txt",
+        "old_string": "old",
+        "new_string": "new"
+      }
+    },
+    "修改完成。"
+  ]
+}

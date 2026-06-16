@@ -1,171 +1,161 @@
-# miniAgent
+# pycode-agent
 
-miniAgent 是一个面向代码仓库的轻量本地 CLI 代码助手。它支持会话续接、工具调用、文件编辑、diff 审批、审计日志、slash 命令和多模型后端。
+`pycode-agent` 是一个从零实现的命令行 coding agent 学习项目。它复刻的是 Claude Code 类 coding agent 的核心架构思想：模型负责提出行动，runtime 负责上下文、工具执行、权限、安全、会话、审计和评测。
 
-## 安装
+## 功能特性
 
-建议在虚拟环境中安装：
+- CLI：支持 `pyagent --help`、`pyagent --print "问题"`、`pyagent doctor`
+- REPL：直接运行 `pyagent` 可以进入多轮交互
+- Agent loop：`QueryEngine` 统一处理用户输入、模型输出、工具调用和工具结果回灌
+- Harness：默认使用 `FakeModelClient`，测试不依赖真实模型
+- 模型适配：支持最小 OpenAI-compatible chat completions 适配器
+- 工具协议：`BaseTool`、`ToolContext`、`ToolResult`、`ToolRegistry`
+- 内置工具：`read_file`、`glob`、`grep`、`write_file`、`edit_file`、`shell`、`todo`、`memory`、`plan`
+- 权限模式：`default`、`accept_edits`、`plan`、`bypass`
+- 文件安全：路径边界检查、敏感文件拒绝、读后写保护、mtime/size 漂移检测、diff 预览
+- Shell 安全：危险命令拦截、超时、stdout/stderr 捕获、输出截断
+- 上下文工程：系统提示、工作区状态、Git 状态、工具 schema、todo、记忆和历史裁剪
+- 会话恢复：保存 messages、tool calls、tool results、permission decisions、todos、file reads
+- 记忆：支持 `remember`、`forget_memory`、`recall_memory`
+- 审计：记录请求、模型响应、工具调用、权限决策、工具结果、错误和会话保存
+- 评测：`evals/runner.py` 支持固定 FakeModel 脚本、工具调用统计、危险行为拦截和预期文件修改检查
+
+## 技术栈
+
+- Python `>=3.11`
+- Pydantic v2
+- Typer
+- pytest / pytest-asyncio
+
+## 安装与启动
 
 ```powershell
-pip install -e .
+python -m pip install -e ".[dev]"
+pyagent --help
+pyagent --print "你好"
+python -m pycode_agent --print "读取 README.md 并总结"
 ```
 
-安装后可以直接运行：
+## 配置说明
+
+默认模型是 `fake`，不需要 API key。
+
+使用 OpenAI-compatible 接口时：
 
 ```powershell
-mini
+$env:OPENAI_API_KEY="你的密钥"
+pyagent --provider openai-compatible --model gpt-4.1-mini --print "读取 README.md 并总结"
 ```
 
-也可以继续使用兼容入口：
+可选环境变量：
 
-```powershell
-python main.py
-```
+- `PYCODE_AGENT_PROVIDER`：默认 provider
+- `PYCODE_AGENT_MODEL`：默认模型名
+- `OPENAI_BASE_URL`：OpenAI-compatible chat completions URL
+- `OPENAI_API_KEY`：API key
+
+运行数据默认写入工作区内 `.pycode_agent/`，包括会话和审计日志。该目录已加入 `.gitignore`。
 
 ## 常用命令
 
 ```powershell
-mini --help
-mini -c
-mini sessions
-mini resume <session_id>
-mini --model deepseek-v4-flash
+pytest
+pytest tests/test_engine.py
+pyagent doctor
+python .\evals\runner.py --fake
+.\scripts\smoke.ps1
 ```
 
-进入会话后，输入 `/` 可以查看 slash 命令列表。
-
-## 权限模式
-
-miniAgent 支持工具权限分级：
+## 项目结构
 
 ```text
-read-only
-workspace-write
-shell-write
-network
-git-write
-destructive
+pycode_agent/
+  cli.py            # 命令行入口
+  repl.py           # 交互循环
+  engine.py         # ReAct 主循环和事件流
+  model.py          # FakeModel 与 OpenAI-compatible 适配器
+  messages.py       # 结构化消息
+  events.py         # EngineEvent
+  context.py        # 上下文构建
+  permissions.py    # 权限决策
+  tool_base.py      # 工具协议和注册表
+  tool_runner.py    # 工具执行编排
+  storage.py        # 会话保存与恢复
+  memory.py         # 持久记忆
+  audit.py          # 审计日志
+  tools/            # 内置工具
+  utils/            # 路径、文本、diff、subprocess、JSONL 等辅助
+tests/              # 单元和主循环测试
+evals/              # 可复现评测雏形
+scripts/smoke.ps1   # 冒烟脚本
 ```
 
-会话中可以用 slash 命令切换策略：
+## 使用说明
 
-```text
-/permission
-/permission ask
-/permission auto-read
-/permission trusted
-```
-
-默认是 `auto-read`：只读工具自动执行，写文件、shell、网络和 Git 写操作会询问确认。
-
-## 工具能力
-
-内置工具包括：
-
-```text
-read_file
-read_many_files
-list_files
-find_files
-search_text
-write_file
-replace_in_file
-apply_patch
-git_status
-git_diff
-web_fetch
-run_shell
-remember
-forget_memory
-delegate
-```
-
-当模型一次请求多个只读或网络读取类工具时，miniAgent 会并行执行安全工具调用，例如多个 `read_file`、`git_diff`、`web_fetch`。涉及写文件、shell、审批和回滚的操作仍会串行执行。
-
-`delegate` 会启动一个只读子 agent 处理调查型子任务。子 agent 只能读取、搜索、查看 Git 只读信息和抓取网页，不能写文件或执行 shell。
-
-Runtime 会跳过同一轮中的重复工具调用，并自动截断超长工具结果，避免模型陷入重复动作或上下文被单次输出挤满。
-
-测试与质量底座包括：
-
-- `FakeModelClient`：不调用真实 API 的确定性模型客户端。
-- 结构化记忆召回：结合 tag、关键词、重要性和时效衰减排序。
-- 工作区漂移检测：通过 SHA-256 指纹判断项目文档、指令和 Git 状态是否变化。
-- 上下文压缩指标：可对裁剪前后字符数和消息数量做实验记录。
-- 基准测试框架：`python scripts/run_benchmarks.py` 可运行确定性 Runtime 回归场景，覆盖安全、上下文压缩、记忆召回、工作区漂移等维度。
-- 安全脱敏：审计日志、run trace 和工具结果会自动隐藏环境变量中的 key/token/secret。
-- Shell 环境白名单：子进程只继承必要系统变量，避免把敏感配置透传给命令。
-- Shell 权限细化：命令会被分为只读、工作区写入、网络、Git 写入和破坏性操作。
-- Shell 执行收敛：`run_shell` 只执行单条简单命令，不支持管道、重定向、命令串联或嵌套 shell；需要读写文件时优先使用专用工具。
-
-## 运行时结构
-
-核心控制循环已经从 CLI 中拆出：
-
-```text
-miniagent/runtime.py    AgentRuntime，负责模型调用、工具调度、权限门禁和会话写入
-miniagent/run_store.py  RunStore，记录每次请求的 trace、状态和摘要
-miniagent/cli.py        终端交互、slash 命令和参数解析
-tests/test_runtime.py   FakeModelClient 驱动的 Runtime 测试
-```
-
-每次直接工具执行或模型工具循环都会写入：
-
-```text
-.mini/runs/<run_id>/trace.jsonl
-.mini/runs/<run_id>/task_status.json
-.mini/runs/<run_id>/report.json
-```
-
-## 配置
-
-配置优先级为：
-
-```text
-默认值 < 用户级配置 < 环境变量 < CLI 参数
-```
-
-用户级配置文件位于：
+非交互执行一次请求：
 
 ```powershell
-mini config path
+pyagent --print "读取 README.md 并总结"
 ```
 
-常用配置命令：
+继续最近会话：
 
 ```powershell
-mini config set backend deepseek
-mini config set model deepseek-v4-flash
-mini config set api_key sk-xxx
-mini config list
+pyagent --continue --print "继续刚才的任务"
 ```
 
-也可以使用环境变量：
+查看诊断信息：
 
 ```powershell
-$env:DEEPSEEK_API_KEY="sk-xxx"
-mini
+pyagent doctor
 ```
 
-旧版 `local_config.py` 仍然兼容，但不再推荐作为长期配置方式。
-如确实需要旧版文件配置，可以参考 `local_config.example.py`；不要把真实密钥提交到仓库。
+## 开发说明
 
-## 开发与测试
+项目核心原则：
 
-安装开发依赖：
-
-```powershell
-pip install -e ".[dev]"
+```text
+模型只能提议行动，runtime 才能决定是否行动。
 ```
 
-运行测试：
+因此模型输出的工具调用必须经过 `ToolRunner` 和 `PermissionManager`，工具结果再以 `tool_result` 消息回灌给模型。测试优先使用 `FakeModelClient`，确保 agent loop 是确定性的。
+
+## 测试说明
 
 ```powershell
 pytest
 ```
 
-运行静态检查：
+当前测试覆盖消息序列化、FakeModel、工具注册、ToolRunner、文件读取、glob/grep、写入/编辑保护、shell 安全、权限模式、上下文、存储、记忆、审计、engine loop 和 CLI。
+
+## 评测说明
 
 ```powershell
-ruff check .
+python .\evals\runner.py --fake
 ```
+
+评测用例位于 `evals/cases/`，每个用例可以声明：
+
+- `prompt`：用户任务
+- `permission_mode`：权限模式
+- `fake_script`：FakeModel 的固定响应和工具调用
+- `workspace_files`：隔离评测工作区初始文件
+- `expected_file_modified`：期望被修改的文件
+
+## 常见问题
+
+### 为什么默认不用真实模型？
+
+真实模型输出不稳定，第一轮重点是把 runtime 写清楚、测稳定。真实模型适配器已经提供，但回归测试仍依赖 `FakeModelClient`。
+
+### 为什么写文件前必须读取？
+
+这是为了避免覆盖用户改动。`read_file` 会记录文件的 `mtime_ns` 和 `size`，`write_file` / `edit_file` 会在写入前检查文件是否漂移。
+
+### 为什么 shell 在 default 模式下经常被拒绝？
+
+Shell 是最高风险工具。非交互 `--print` 下需要确认的命令会直接拒绝；可以用 `bypass` 做本地实验，但不建议默认使用。
+
+## 许可证
+
+当前仓库未声明许可证。

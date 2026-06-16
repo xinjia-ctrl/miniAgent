@@ -1,31 +1,52 @@
-from miniagent import cli
+from __future__ import annotations
+
+from pycode_agent.permissions import PermissionManager
+from pycode_agent.tool_base import ToolContext
+from pycode_agent.tools.read_file import ReadFileInput, ReadFileTool
+from pycode_agent.tools.shell import ShellInput, ShellTool
+from pycode_agent.tools.write_file import WriteFileInput, WriteFileTool
 
 
-def test_shell_permission_network():
-    assert cli._classify_shell_permission("pip install requests") == "network"
-    assert cli._classify_shell_permission("python -m pip install requests") == "network"
-    assert cli._classify_shell_permission("curl https://example.com") == "network"
+async def test_default_allows_read_tool(workspace) -> None:
+    manager = PermissionManager(non_interactive=True)
+    context = ToolContext(cwd=str(workspace), session_id="s", permission_mode="default")
+
+    decision = await manager.decide(ReadFileTool(), ReadFileInput(file_path="README.md"), context)
+
+    assert decision.allowed
 
 
-def test_shell_permission_git_write():
-    assert cli._classify_shell_permission("git add .") == "git-write"
-    assert cli._classify_shell_permission("git branch feature/demo") == "git-write"
-    assert cli._classify_shell_permission("git commit -m test") == "git-write"
+async def test_default_denies_write_in_non_interactive(workspace) -> None:
+    manager = PermissionManager(non_interactive=True)
+    context = ToolContext(cwd=str(workspace), session_id="s", permission_mode="default")
+
+    decision = await manager.decide(WriteFileTool(), WriteFileInput(file_path="a.txt", content="x"), context)
+
+    assert not decision.allowed
 
 
-def test_shell_permission_file_write():
-    assert cli._classify_shell_permission("echo hi > a.txt") == "workspace-write"
-    assert cli._classify_shell_permission("New-Item a.txt") == "workspace-write"
+async def test_accept_edits_allows_write(workspace) -> None:
+    manager = PermissionManager(non_interactive=True)
+    context = ToolContext(cwd=str(workspace), session_id="s", permission_mode="accept_edits")
+
+    decision = await manager.decide(WriteFileTool(), WriteFileInput(file_path="a.txt", content="x"), context)
+
+    assert decision.allowed
 
 
-def test_shell_permission_destructive():
-    assert cli._classify_shell_permission("Remove-Item a.txt") == "destructive"
+async def test_plan_denies_shell(workspace) -> None:
+    manager = PermissionManager(non_interactive=True)
+    context = ToolContext(cwd=str(workspace), session_id="s", permission_mode="plan")
+
+    decision = await manager.decide(ShellTool(), ShellInput(command="python --version"), context)
+
+    assert not decision.allowed
 
 
-def test_shell_permission_readonly():
-    assert cli._classify_shell_permission("git status") == "read-only"
-    assert cli._classify_shell_permission("git branch --show-current") == "read-only"
+async def test_bypass_allows_shell(workspace) -> None:
+    manager = PermissionManager(non_interactive=True)
+    context = ToolContext(cwd=str(workspace), session_id="s", permission_mode="bypass")
 
+    decision = await manager.decide(ShellTool(), ShellInput(command="python --version"), context)
 
-def test_shell_permission_pipeline_requires_shell_write():
-    assert cli._classify_shell_permission("type README.md | findstr mini") == "shell-write"
+    assert decision.allowed

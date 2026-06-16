@@ -1,0 +1,14 @@
+{
+  "prompt": "读取 README.md 并总结",
+  "permission_mode": "default",
+  "fake_script": [
+    {
+      "text": "先读取 README。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "README.md"
+      }
+    },
+    "README 已读取，项目是一个最小 coding agent。"
+  ]
+}

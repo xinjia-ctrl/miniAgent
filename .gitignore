@@ -1,14 +1,29 @@
+# Python
 __pycache__/
-*.pyc
-.env
-venv/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
 .venv/
+venv/
+
+# Tool caches and runtime data
+.pytest_cache/
+.ruff_cache/
+.pycode_agent/
+test_workspaces/
+pytest_tmp/
+.pytest_tmp/
+pytest-cache-files-*/
+.mini/
+.mini_*/
+
+# Local secrets/config
+.env
+.env.*
 local_config.py
-.mini/sessions/
-.mini/memory/
-.mini/logs/
-.mini/runs/
-.mini/benchmarks/
-.mini_test_runtime/
-.mini_quality_smoke/
-.mini_quality_debug/
+
+# Markdown policy: keep README files, ignore other design notes.
+*.md
+!README.md
+!**/README.md
