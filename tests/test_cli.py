@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from typer.testing import CliRunner
 
 from miniagent.changes import ChangeStore
@@ -106,3 +108,55 @@ def test_cli_changes_show_and_revert(tmp_path) -> None:
     assert change.id in show_result.output
     assert revert_result.exit_code == 0
     assert target.read_text(encoding="utf-8") == "before\n"
+
+
+def test_cli_memory_list_empty(tmp_path) -> None:
+    result = CliRunner().invoke(app, ["memory", "list", "--cwd", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "没有找到记忆" in result.output
+
+
+def test_cli_memory_lifecycle(tmp_path) -> None:
+    runner = CliRunner()
+
+    remember = runner.invoke(
+        app,
+        [
+            "memory",
+            "remember",
+            "默认使用中文说明",
+            "--tag",
+            "preference",
+            "--importance",
+            "5",
+            "--cwd",
+            str(tmp_path),
+        ],
+    )
+    memory_id = re.search(r"mem_[0-9a-f]+", remember.output).group(0)
+    listing = runner.invoke(app, ["memory", "list", "--cwd", str(tmp_path)])
+    update = runner.invoke(
+        app,
+        [
+            "memory",
+            "update",
+            memory_id,
+            "--content",
+            "默认使用中文解释",
+            "--tag",
+            "preference",
+            "--cwd",
+            str(tmp_path),
+        ],
+    )
+    search = runner.invoke(app, ["memory", "search", "中文", "--cwd", str(tmp_path)])
+    delete = runner.invoke(app, ["memory", "delete", memory_id, "--cwd", str(tmp_path)])
+
+    assert remember.exit_code == 0
+    assert listing.exit_code == 0
+    assert memory_id in listing.output
+    assert update.exit_code == 0
+    assert search.exit_code == 0
+    assert "reason=" in search.output
+    assert delete.exit_code == 0

@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from miniagent.bootstrap import RuntimeContainer, build_runtime_container
 from miniagent.changes import ChangeStore, RevertResult
 from miniagent.config import AgentConfig
 from miniagent.engine import QueryEngine
+from miniagent.memory import (
+    MemoryItem,
+    MemoryRecallHit,
+    MemoryScope,
+    MemoryStore,
+    default_memory_path,
+)
 from miniagent.storage import SessionRecord, SessionSummary
 
 
@@ -56,6 +64,78 @@ class MiniAgentApplication:
 
     def revert_change(self, change_id: str) -> RevertResult:
         return ChangeStore(self.config.resolved_data_dir).revert(change_id, cwd=self.config.cwd)
+
+    def memory_store(self) -> MemoryStore:
+        return MemoryStore(
+            default_memory_path(data_dir=self.config.resolved_data_dir, cwd=self.config.cwd)
+        )
+
+    def list_memories(self, *, scope: MemoryScope | None = None) -> list[MemoryItem]:
+        return self.memory_store().list_memories(
+            scope=scope,
+            project=self.project_key,
+        )
+
+    def search_memories(
+        self,
+        query: str,
+        *,
+        scope: MemoryScope | None = None,
+        limit: int = 20,
+        tags: list[str] | None = None,
+    ) -> list[MemoryRecallHit]:
+        return self.memory_store().recall_hits(
+            query,
+            limit=limit,
+            tags=tags,
+            scope=scope,
+            project=self.project_key,
+        )
+
+    def remember_memory(
+        self,
+        content: str,
+        *,
+        tags: list[str] | None = None,
+        importance: float = 1,
+        scope: MemoryScope = "project",
+    ) -> MemoryItem:
+        return self.memory_store().remember(
+            content,
+            tags=tags,
+            importance=importance,
+            scope=scope,
+            project=self.project_key if scope == "project" else None,
+            source="cli:memory",
+        )
+
+    def update_memory(
+        self,
+        memory_id: str,
+        *,
+        content: str | None = None,
+        tags: list[str] | None = None,
+        importance: float | None = None,
+        scope: MemoryScope | None = None,
+    ) -> MemoryItem | None:
+        next_scope = scope
+        project = self.project_key if next_scope == "project" else None
+        return self.memory_store().update(
+            memory_id,
+            content=content,
+            tags=tags,
+            importance=importance,
+            scope=scope,
+            project=project,
+            source="cli:memory",
+        )
+
+    def delete_memory(self, memory_id: str) -> bool:
+        return self.memory_store().delete(memory_id)
+
+    @property
+    def project_key(self) -> str:
+        return str(Path(self.config.cwd).resolve())
 
     def diagnostics(self) -> dict[str, str]:
         config = self.config

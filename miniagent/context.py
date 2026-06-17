@@ -75,6 +75,7 @@ class ContextBuilder:
             "\n".join([config.cwd, platform_name, config.permission_mode, git_status])
         )
         memory_tokens = estimate_tokens(memory_context)
+        memory_ids = self._memory_ids(state.get("memories", []))
         context_meta = {
             "cwd": config.cwd,
             "permission_mode": config.permission_mode,
@@ -92,6 +93,8 @@ class ContextBuilder:
             "selected_message_count": len(selected),
             "compacted_message_count": selection_meta["compacted_message_count"],
             "compact_summary": state.get("compact_summary"),
+            "included_memory_ids": memory_ids,
+            "memory_recall": state.get("last_memory_recall", []),
         }
         state["last_context"] = context_meta
         return ModelRequest(
@@ -265,10 +268,33 @@ class ContextBuilder:
         lines = []
         for item in memories:
             if hasattr(item, "content"):
-                lines.append(f"- {item.content}")
+                memory_id = getattr(item, "id", None)
+                scope = getattr(item, "scope", None)
+                prefix = f"[{memory_id}]" if memory_id else ""
+                if scope:
+                    prefix = f"{prefix}[{scope}]"
+                content = str(item.content)
+                lines.append(f"- {prefix} {content}" if prefix else f"- {content}")
             elif isinstance(item, dict):
-                lines.append(f"- {item.get('content', '')}")
+                memory_id = item.get("id")
+                scope = item.get("scope")
+                prefix = f"[{memory_id}]" if memory_id else ""
+                if scope:
+                    prefix = f"{prefix}[{scope}]"
+                content = str(item.get("content", ""))
+                lines.append(f"- {prefix} {content}" if prefix else f"- {content}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _memory_ids(memories: list[Any]) -> list[str]:
+        ids: list[str] = []
+        for item in memories:
+            memory_id = getattr(item, "id", None)
+            if isinstance(item, dict):
+                memory_id = item.get("id")
+            if memory_id:
+                ids.append(str(memory_id))
+        return ids
 
     @staticmethod
     def _format_memory_context(state: dict[str, Any]) -> str:

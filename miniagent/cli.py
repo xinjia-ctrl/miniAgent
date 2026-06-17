@@ -11,15 +11,18 @@ from miniagent.app import MiniAgentApplication
 from miniagent.bootstrap import build_agent_config
 from miniagent.engine import QueryEngine
 from miniagent.events import ASSISTANT_DELTA, DONE, ERROR, TOOL_ERROR, TOOL_RESULT
+from miniagent.memory import MemoryItem, MemoryRecallHit, MemoryScope, normalize_scope
 from miniagent.repl import run_repl_sync
 
 app = typer.Typer(add_completion=False, invoke_without_command=True)
 context_app = typer.Typer(help="查看上下文预算和 compact 状态。")
 sessions_app = typer.Typer(help="查看和导出会话。")
 changes_app = typer.Typer(help="查看和回滚文件变更。")
+memory_app = typer.Typer(help="管理长期记忆。")
 app.add_typer(context_app, name="context")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(changes_app, name="changes")
+app.add_typer(memory_app, name="memory")
 
 
 @app.callback(invoke_without_command=True)
@@ -174,6 +177,139 @@ def revert_change(
     typer.echo(result.message)
 
 
+@memory_app.command("list")
+def list_memories(
+    query: str = typer.Option("", "--query", "-q", help="按关键词搜索记忆。"),
+    scope: Optional[str] = typer.Option(
+        None,
+        "--scope",
+        help="记忆层级：user、project、session 或 all。",
+    ),
+    tag: Optional[list[str]] = typer.Option(None, "--tag", "-t", help="按标签过滤，可重复。"),
+    limit: int = typer.Option(50, "--limit", min=1, max=200, help="最多显示数量。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    parsed_scope = _parse_memory_scope(scope)
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    if query or tag:
+        hits = application.search_memories(
+            query,
+            scope=parsed_scope,
+            limit=limit,
+            tags=tag or [],
+        )
+        if not hits:
+            typer.echo("没有找到记忆。")
+            return
+        for hit in hits:
+            typer.echo(_format_memory_hit(hit))
+        return
+
+    memories = application.list_memories(scope=parsed_scope)[:limit]
+    if not memories:
+        typer.echo("没有找到记忆。")
+        return
+    for item in memories:
+        typer.echo(_format_memory_item(item))
+
+
+@memory_app.command("search")
+def search_memories(
+    query: str = typer.Argument(..., help="搜索关键词。"),
+    scope: Optional[str] = typer.Option(
+        None,
+        "--scope",
+        help="记忆层级：user、project、session 或 all。",
+    ),
+    tag: Optional[list[str]] = typer.Option(None, "--tag", "-t", help="按标签过滤，可重复。"),
+    limit: int = typer.Option(20, "--limit", min=1, max=100, help="最多显示数量。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    parsed_scope = _parse_memory_scope(scope)
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    hits = application.search_memories(query, scope=parsed_scope, limit=limit, tags=tag or [])
+    if not hits:
+        typer.echo("没有找到记忆。")
+        return
+    for hit in hits:
+        typer.echo(_format_memory_hit(hit))
+
+
+@memory_app.command("remember")
+def remember_memory(
+    content: str = typer.Argument(..., help="要保存的记忆内容。"),
+    scope: str = typer.Option("project", "--scope", help="记忆层级：user、project 或 session。"),
+    tag: Optional[list[str]] = typer.Option(None, "--tag", "-t", help="标签，可重复。"),
+    importance: float = typer.Option(1, "--importance", min=1, max=10, help="重要性 1-10。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    parsed_scope = _parse_memory_scope(scope)
+    if parsed_scope is None:
+        typer.echo("新增记忆时 scope 不能为 all。")
+        raise typer.Exit(code=1)
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    item = application.remember_memory(
+        content,
+        tags=tag or [],
+        importance=importance,
+        scope=parsed_scope,
+    )
+    typer.echo(f"已记住：{item.id}")
+
+
+@memory_app.command("update")
+def update_memory(
+    memory_id: str = typer.Argument(..., help="记忆 ID。"),
+    content: Optional[str] = typer.Option(None, "--content", help="新的记忆内容。"),
+    scope: Optional[str] = typer.Option(
+        None,
+        "--scope",
+        help="新的记忆层级：user、project 或 session。",
+    ),
+    tag: Optional[list[str]] = typer.Option(None, "--tag", "-t", help="新的标签列表，可重复。"),
+    importance: Optional[float] = typer.Option(
+        None,
+        "--importance",
+        min=1,
+        max=10,
+        help="新的重要性。",
+    ),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    parsed_scope = _parse_memory_scope(scope)
+    if scope is not None and parsed_scope is None:
+        typer.echo("更新记忆时 scope 不能为 all。")
+        raise typer.Exit(code=1)
+    if content is None and tag is None and importance is None and scope is None:
+        typer.echo("没有提供要更新的字段。")
+        raise typer.Exit(code=1)
+
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    item = application.update_memory(
+        memory_id,
+        content=content,
+        tags=tag,
+        importance=importance,
+        scope=parsed_scope,
+    )
+    if item is None:
+        typer.echo("没有找到记忆。")
+        raise typer.Exit(code=1)
+    typer.echo(f"已更新：{item.id}")
+
+
+@memory_app.command("delete")
+def delete_memory(
+    memory_id: str = typer.Argument(..., help="记忆 ID。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    if not application.delete_memory(memory_id):
+        typer.echo("没有找到记忆。")
+        raise typer.Exit(code=1)
+    typer.echo("已删除")
+
+
 async def _run_print(engine: QueryEngine, prompt: str) -> None:
     async for event in engine.submit(prompt):
         if event.type == ASSISTANT_DELTA:
@@ -190,3 +326,23 @@ async def _run_print(engine: QueryEngine, prompt: str) -> None:
 
 def main() -> None:
     app()
+
+
+def _parse_memory_scope(scope: str | None) -> MemoryScope | None:
+    try:
+        return normalize_scope(scope)
+    except ValueError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+def _format_memory_item(item: MemoryItem) -> str:
+    tags = ",".join(item.tags) if item.tags else "-"
+    return (
+        f"{item.id}\tscope={item.scope}\timportance={item.importance:g}\t"
+        f"tags={tags}\tupdated_at={item.updated_at:.3f}\t{item.content}"
+    )
+
+
+def _format_memory_hit(hit: MemoryRecallHit) -> str:
+    return f"{_format_memory_item(hit.item)}\tscore={hit.score:.2f}\treason={hit.reason}"

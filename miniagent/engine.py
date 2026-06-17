@@ -19,6 +19,7 @@ from miniagent.events import (
     TOOL_START,
     EngineEvent,
 )
+from miniagent.memory import build_session_memory_candidates
 from miniagent.messages import Message, tool_result_message, user_text
 from miniagent.model import ModelClient, create_model_router
 from miniagent.permissions import PermissionManager
@@ -187,6 +188,11 @@ class QueryEngine:
         return results
 
     def _save(self):
+        candidates = build_session_memory_candidates(self.messages, session_id=self.session_id)
+        if candidates:
+            self.state["memory_candidates"] = [
+                candidate.model_dump(mode="json") for candidate in candidates
+            ]
         record = SessionRecord(
             id=self.session_id,
             cwd=self.config.cwd,
