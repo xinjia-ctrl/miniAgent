@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from miniagent.bootstrap import RuntimeContainer, build_runtime_container
 from miniagent.config import AgentConfig
 from miniagent.engine import QueryEngine
-from miniagent.storage import SessionRecord
+from miniagent.storage import SessionRecord, SessionSummary
 
 
 @dataclass
@@ -38,6 +38,17 @@ class MiniAgentApplication:
             "compact_summary": session.state.get("compact_summary"),
             "last_context": session.state.get("last_context"),
         }
+
+    def list_sessions(self) -> list[SessionSummary]:
+        return self.container.storage.list_sessions()
+
+    def export_session(self, session_id: str | None = None) -> dict[str, object] | None:
+        if session_id is None:
+            latest = self.load_latest_session()
+            if latest is None:
+                return None
+            session_id = latest.id
+        return self.container.storage.export(session_id)
 
     def diagnostics(self) -> dict[str, str]:
         config = self.config

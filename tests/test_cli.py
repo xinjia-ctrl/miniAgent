@@ -56,3 +56,26 @@ def test_cli_context_inspect_last(tmp_path) -> None:
     assert "session_id: sess_ctx" in result.output
     assert "compacted_message_count: 2" in result.output
     assert "历史摘要内容" in result.output
+
+
+def test_cli_sessions_list_and_export(tmp_path) -> None:
+    storage = SessionStorage(tmp_path / ".miniagent")
+    storage.save(
+        SessionRecord(
+            id="sess_list",
+            cwd=str(tmp_path),
+            messages=[user_text("hi")],
+            state={"last_context": {"selected_message_count": 1}},
+        )
+    )
+
+    list_result = CliRunner().invoke(app, ["sessions", "list", "--cwd", str(tmp_path)])
+    export_result = CliRunner().invoke(app, ["sessions", "export", "--cwd", str(tmp_path), "--last"])
+
+    assert list_result.exit_code == 0
+    assert "sess_list" in list_result.output
+    assert "messages=1" in list_result.output
+    assert export_result.exit_code == 0
+    assert '"snapshot"' in export_result.output
+    assert '"events"' in export_result.output
+    assert '"rebuilt"' in export_result.output

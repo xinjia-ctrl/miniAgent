@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -14,7 +15,9 @@ from miniagent.repl import run_repl_sync
 
 app = typer.Typer(add_completion=False, invoke_without_command=True)
 context_app = typer.Typer(help="查看上下文预算和 compact 状态。")
+sessions_app = typer.Typer(help="查看和导出会话。")
 app.add_typer(context_app, name="context")
+app.add_typer(sessions_app, name="sessions")
 
 
 @app.callback(invoke_without_command=True)
@@ -102,6 +105,41 @@ def inspect_context(
         typer.echo(summary)
     else:
         typer.echo("compact_summary: <empty>")
+
+
+@sessions_app.command("list")
+def list_sessions(
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    config = build_agent_config(cwd=cwd)
+    application = MiniAgentApplication.from_config(config)
+    sessions = application.list_sessions()
+    if not sessions:
+        typer.echo("没有找到会话。")
+        return
+    for session in sessions:
+        typer.echo(
+            f"{session.id}\tmessages={session.message_count}\t"
+            f"updated_at={session.updated_at:.3f}\tcwd={session.cwd}"
+        )
+
+
+@sessions_app.command("export")
+def export_session(
+    session_id: Optional[str] = typer.Argument(None, help="会话 ID；省略时配合 --last 导出最近会话。"),
+    last: bool = typer.Option(False, "--last", help="导出最近一次会话。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    if session_id is None and not last:
+        typer.echo("请提供 session_id，或使用 --last。")
+        raise typer.Exit(code=1)
+    config = build_agent_config(cwd=cwd)
+    application = MiniAgentApplication.from_config(config)
+    exported = application.export_session(None if last else session_id)
+    if exported is None:
+        typer.echo("没有找到会话。")
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(exported, ensure_ascii=False, indent=2))
 
 
 async def _run_print(engine: QueryEngine, prompt: str) -> None:
