@@ -55,17 +55,31 @@ class BaseTool(ABC):
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, BaseTool] = {}
+        self._metadata: dict[str, dict[str, Any]] = {}
 
-    def register(self, tool: BaseTool) -> None:
+    def register(self, tool: BaseTool, metadata: dict[str, Any] | None = None) -> None:
         if tool.name in self._tools:
             raise ValueError(f"工具已注册：{tool.name}")
         self._tools[tool.name] = tool
+        self._metadata[tool.name] = metadata or {"source": "builtin"}
+
+    def unregister(self, name: str) -> None:
+        self._tools.pop(name, None)
+        self._metadata.pop(name, None)
 
     def get(self, name: str) -> BaseTool:
         try:
             return self._tools[name]
         except KeyError as exc:
             raise KeyError(f"未知工具：{name}") from exc
+
+    def metadata(self, name: str) -> dict[str, Any]:
+        return dict(self._metadata.get(name, {}))
+
+    def set_metadata(self, name: str, metadata: dict[str, Any]) -> None:
+        if name not in self._tools:
+            raise KeyError(f"未知工具：{name}")
+        self._metadata[name] = metadata
 
     def names(self) -> list[str]:
         return sorted(self._tools)

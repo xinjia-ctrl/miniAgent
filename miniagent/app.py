@@ -14,6 +14,7 @@ from miniagent.memory import (
     MemoryStore,
     default_memory_path,
 )
+from miniagent.plugin_loader import PluginStatus, discover_plugins, install_plugin
 from miniagent.storage import SessionRecord, SessionSummary
 
 
@@ -136,6 +137,48 @@ class MiniAgentApplication:
     @property
     def project_key(self) -> str:
         return str(Path(self.config.cwd).resolve())
+
+    def list_tools(self) -> list[dict[str, object]]:
+        items: list[dict[str, object]] = []
+        for name in self.container.registry.names():
+            tool = self.container.registry.get(name)
+            metadata = self.container.registry.metadata(name)
+            items.append(
+                {
+                    "name": name,
+                    "description": tool.description,
+                    "source": metadata.get("source", "builtin"),
+                    "plugin": metadata.get("plugin"),
+                    "kind": metadata.get("kind", "builtin"),
+                    "declared_permissions": metadata.get("declared_permissions", []),
+                }
+            )
+        return items
+
+    def inspect_tool(self, name: str) -> dict[str, object]:
+        tool = self.container.registry.get(name)
+        return {
+            "name": name,
+            "description": tool.description,
+            "schema": tool.schema(),
+            "metadata": self.container.registry.metadata(name),
+        }
+
+    def list_plugins(self) -> list[PluginStatus]:
+        loaded = {status.path: status for status in self.container.plugin_statuses}
+        discovered = discover_plugins(
+            data_dir=self.config.resolved_data_dir,
+            cwd=self.config.cwd,
+        )
+        return [loaded.get(status.path, status) for status in discovered]
+
+    def install_plugin(self, source: str | Path, *, force: bool = False) -> PluginStatus:
+        return install_plugin(
+            source,
+            data_dir=self.config.resolved_data_dir,
+            cwd=self.config.cwd,
+            force=force,
+        )
 
     def diagnostics(self) -> dict[str, str]:
         config = self.config

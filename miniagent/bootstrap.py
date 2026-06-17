@@ -9,6 +9,7 @@ from miniagent.context import ContextBuilder
 from miniagent.engine import QueryEngine
 from miniagent.model import ModelClient, create_model_router
 from miniagent.permissions import PermissionManager
+from miniagent.plugin_loader import PluginStatus, load_plugins
 from miniagent.storage import SessionRecord, SessionStorage
 from miniagent.tool_base import ToolRegistry
 from miniagent.tools import builtin_registry
@@ -25,6 +26,7 @@ class RuntimeContainer:
     context_builder: ContextBuilder
     permission_manager: PermissionManager
     audit_logger: AuditLogger
+    plugin_statuses: list[PluginStatus]
 
     def create_engine(self, session: SessionRecord | None = None) -> QueryEngine:
         return QueryEngine(
@@ -59,12 +61,19 @@ def build_agent_config(
 
 
 def build_runtime_container(config: AgentConfig) -> RuntimeContainer:
+    registry = builtin_registry()
+    plugin_statuses = load_plugins(
+        registry,
+        data_dir=config.resolved_data_dir,
+        cwd=config.cwd,
+    )
     return RuntimeContainer(
         config=config,
         model_client=create_model_router(config.model),
-        registry=builtin_registry(),
+        registry=registry,
         storage=SessionStorage(config.resolved_data_dir),
         context_builder=ContextBuilder(),
         permission_manager=PermissionManager(non_interactive=config.non_interactive),
         audit_logger=AuditLogger(config.audit_path),
+        plugin_statuses=plugin_statuses,
     )

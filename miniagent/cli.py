@@ -19,10 +19,14 @@ context_app = typer.Typer(help="查看上下文预算和 compact 状态。")
 sessions_app = typer.Typer(help="查看和导出会话。")
 changes_app = typer.Typer(help="查看和回滚文件变更。")
 memory_app = typer.Typer(help="管理长期记忆。")
+tools_app = typer.Typer(help="查看已注册工具。")
+plugins_app = typer.Typer(help="管理本地插件。")
 app.add_typer(context_app, name="context")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(changes_app, name="changes")
 app.add_typer(memory_app, name="memory")
+app.add_typer(tools_app, name="tools")
+app.add_typer(plugins_app, name="plugins")
 
 
 @app.callback(invoke_without_command=True)
@@ -308,6 +312,65 @@ def delete_memory(
         typer.echo("没有找到记忆。")
         raise typer.Exit(code=1)
     typer.echo("已删除")
+
+
+@tools_app.command("list")
+def list_tools(
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    for tool in application.list_tools():
+        plugin = f"\tplugin={tool['plugin']}" if tool.get("plugin") else ""
+        typer.echo(
+            f"{tool['name']}\tsource={tool['source']}\tkind={tool['kind']}{plugin}\t"
+            f"{tool['description']}"
+        )
+
+
+@tools_app.command("inspect")
+def inspect_tool(
+    name: str = typer.Argument(..., help="工具名称。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    try:
+        typer.echo(json.dumps(application.inspect_tool(name), ensure_ascii=False, indent=2))
+    except KeyError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@plugins_app.command("list")
+def list_plugins(
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    plugins = application.list_plugins()
+    if not plugins:
+        typer.echo("没有找到插件。")
+        return
+    for plugin in plugins:
+        state = "loaded" if plugin.loaded else "error"
+        tools = ",".join(plugin.tools) if plugin.tools else "-"
+        line = f"{plugin.name}\t{state}\tversion={plugin.version}\ttools={tools}\tpath={plugin.path}"
+        if plugin.error:
+            line += f"\terror={plugin.error}"
+        typer.echo(line)
+
+
+@plugins_app.command("install")
+def install_plugin(
+    source: Path = typer.Argument(..., help="插件目录，必须包含 plugin.json。"),
+    force: bool = typer.Option(False, "--force", help="覆盖已安装的同名插件。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    try:
+        status = application.install_plugin(source, force=force)
+    except (FileExistsError, ValueError, OSError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"已安装插件：{status.name}")
 
 
 async def _run_print(engine: QueryEngine, prompt: str) -> None:

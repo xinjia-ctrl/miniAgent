@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 from typer.testing import CliRunner
@@ -160,3 +161,51 @@ def test_cli_memory_lifecycle(tmp_path) -> None:
     assert search.exit_code == 0
     assert "reason=" in search.output
     assert delete.exit_code == 0
+
+
+def test_cli_tools_list_and_inspect(tmp_path) -> None:
+    list_result = CliRunner().invoke(app, ["tools", "list", "--cwd", str(tmp_path)])
+    inspect_result = CliRunner().invoke(app, ["tools", "inspect", "read_file", "--cwd", str(tmp_path)])
+
+    assert list_result.exit_code == 0
+    assert "read_file" in list_result.output
+    assert "source=builtin" in list_result.output
+    assert inspect_result.exit_code == 0
+    assert '"name": "read_file"' in inspect_result.output
+
+
+def test_cli_plugins_list_empty(tmp_path) -> None:
+    result = CliRunner().invoke(app, ["plugins", "list", "--cwd", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "没有找到插件" in result.output
+
+
+def test_cli_plugins_install(tmp_path) -> None:
+    source = tmp_path / "sample-plugin"
+    source.mkdir()
+    (source / "plugin.json").write_text(
+        json.dumps(
+            {
+                "name": "sample-plugin",
+                "version": "0.1.0",
+                "description": "Sample plugin",
+                "entry": "plugin.py",
+                "tools": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (source / "plugin.py").write_text(
+        "def register(registry):\n    return None\n",
+        encoding="utf-8",
+    )
+
+    install = CliRunner().invoke(app, ["plugins", "install", str(source), "--cwd", str(tmp_path)])
+    listing = CliRunner().invoke(app, ["plugins", "list", "--cwd", str(tmp_path)])
+
+    assert install.exit_code == 0
+    assert "已安装插件：sample-plugin" in install.output
+    assert listing.exit_code == 0
+    assert "sample-plugin" in listing.output
