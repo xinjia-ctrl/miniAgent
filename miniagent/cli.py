@@ -16,6 +16,7 @@ from evals.runner import (
     render_compare_markdown,
     run_eval_suite,
 )
+from miniagent.audit_report import render_audit_report
 from miniagent.app import MiniAgentApplication
 from miniagent.bootstrap import build_agent_config
 from miniagent.engine import QueryEngine
@@ -31,6 +32,7 @@ memory_app = typer.Typer(help="管理长期记忆。")
 tools_app = typer.Typer(help="查看已注册工具。")
 plugins_app = typer.Typer(help="管理本地插件。")
 evals_app = typer.Typer(help="运行和查看评测。")
+audit_app = typer.Typer(help="查看审计报告。")
 app.add_typer(context_app, name="context")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(changes_app, name="changes")
@@ -38,6 +40,7 @@ app.add_typer(memory_app, name="memory")
 app.add_typer(tools_app, name="tools")
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(evals_app, name="evals")
+app.add_typer(audit_app, name="audit")
 
 
 @app.callback(invoke_without_command=True)
@@ -441,6 +444,31 @@ def compare_evals(
         typer.echo(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
     else:
         typer.echo(render_compare_markdown(result))
+
+
+@audit_app.command("show")
+def show_audit(
+    session_id: str = typer.Argument(..., help="会话 ID。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+    timeline_limit: int = typer.Option(
+        80,
+        "--timeline-limit",
+        min=0,
+        max=500,
+        help="时间线条数。",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="输出 JSON。"),
+) -> None:
+    application = MiniAgentApplication.from_config(build_agent_config(cwd=cwd))
+    try:
+        report = application.audit_report(session_id, timeline_limit=timeline_limit)
+    except FileNotFoundError as exc:
+        typer.echo(f"没有找到会话或审计数据：{exc.filename}")
+        raise typer.Exit(code=1) from exc
+    if json_output:
+        typer.echo(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        typer.echo(render_audit_report(report))
 
 
 async def _run_print(engine: QueryEngine, prompt: str) -> None:

@@ -17,7 +17,7 @@
 - 上下文工程：系统提示、工作区状态、Git 状态、工具 schema、todo、记忆和历史裁剪
 - 会话恢复：保存 messages、tool calls、tool results、permission decisions、todos、file reads
 - 记忆：支持 `remember`、`forget_memory`、`recall_memory`
-- 审计：记录请求、模型响应、工具调用、权限决策、工具结果、错误和会话保存
+- 审计：记录请求、模型响应、工具调用、权限决策、工具结果、错误和会话保存，并可生成 session 复盘报告
 - 评测：36 个 deterministic benchmark，支持 JSON/Markdown 报告和 baseline compare
 
 ## 技术栈
@@ -62,6 +62,7 @@ miniagent --provider openai-compatible --model gpt-4.1-mini --print "读取 READ
 pytest
 pytest tests/test_engine.py
 miniagent doctor
+miniagent audit show <session_id>
 python .\evals\runner.py --fake
 .\scripts\smoke.ps1
 ```
@@ -83,6 +84,7 @@ miniagent/
   storage.py        # 会话保存与恢复
   memory.py         # 持久记忆
   audit.py          # 审计日志
+  audit_report.py   # 审计报告与 session 可观测性汇总
   tools/            # 内置工具
   utils/            # 路径、文本、diff、subprocess、JSONL 等辅助
 tests/              # 单元和主循环测试

@@ -5,6 +5,7 @@ import re
 
 from typer.testing import CliRunner
 
+from miniagent.audit import AuditLogger
 from miniagent.changes import ChangeStore
 from miniagent.cli import app
 from miniagent.messages import user_text
@@ -83,6 +84,36 @@ def test_cli_sessions_list_and_export(tmp_path) -> None:
     assert '"snapshot"' in export_result.output
     assert '"events"' in export_result.output
     assert '"rebuilt"' in export_result.output
+
+
+def test_cli_audit_show(tmp_path) -> None:
+    data_dir = tmp_path / ".miniagent"
+    storage = SessionStorage(data_dir)
+    storage.save(
+        SessionRecord(
+            id="sess_audit_cli",
+            cwd=str(tmp_path),
+            messages=[user_text("hi")],
+            tool_calls=[{"id": "tool_1", "name": "read_file", "input": {"file_path": "README.md"}}],
+            tool_results=[{"display": "ok", "is_error": False}],
+            permission_decisions=[{"allowed": True, "action": "allow", "reason": "只读"}],
+            state={"last_context": {"usage": {"system": 1, "history": 2}}},
+        )
+    )
+    logger = AuditLogger(data_dir / "audit.jsonl")
+    logger.log("request_start", {"session_id": "sess_audit_cli", "prompt": "hi"})
+    logger.log("tool_call", {"call": {"id": "tool_1", "name": "read_file"}})
+    logger.log("session_saved", {"session_id": "sess_audit_cli"})
+
+    result = CliRunner().invoke(
+        app,
+        ["audit", "show", "sess_audit_cli", "--cwd", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0
+    assert "miniAgent Audit Report" in result.output
+    assert "tool_calls: 1" in result.output
+    assert "read_file" in result.output
 
 
 def test_cli_changes_show_and_revert(tmp_path) -> None:

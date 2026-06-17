@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from miniagent.audit_report import (
+    SessionAuditReport,
+    build_session_audit_report,
+    render_audit_report,
+)
 from miniagent.bootstrap import RuntimeContainer, build_runtime_container
 from miniagent.changes import ChangeStore, RevertResult
 from miniagent.config import AgentConfig
@@ -59,6 +64,17 @@ class MiniAgentApplication:
                 return None
             session_id = latest.id
         return self.container.storage.export(session_id)
+
+    def audit_report(self, session_id: str, *, timeline_limit: int = 80) -> SessionAuditReport:
+        return build_session_audit_report(
+            storage=self.container.storage,
+            audit_path=self.config.audit_path,
+            session_id=session_id,
+            timeline_limit=timeline_limit,
+        )
+
+    def render_audit_report(self, session_id: str, *, timeline_limit: int = 80) -> str:
+        return render_audit_report(self.audit_report(session_id, timeline_limit=timeline_limit))
 
     def describe_changes(self, change_id: str | None = None, *, limit: int = 20) -> str:
         return ChangeStore(self.config.resolved_data_dir).describe(change_id, limit=limit)
