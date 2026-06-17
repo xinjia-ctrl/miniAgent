@@ -16,6 +16,7 @@ async def test_tool_runner_executes_registered_tool(tmp_path) -> None:
 
     assert results[0].result.display == "hi"
     assert not results[0].result.is_error
+    assert results[0].result.structured_content["source"]["trust"] == "untrusted"
 
 
 async def test_tool_runner_turns_unknown_tool_into_error(tmp_path) -> None:

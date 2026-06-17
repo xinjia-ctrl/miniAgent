@@ -4,21 +4,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+from miniagent.security.secrets import redact_sensitive
 from miniagent.utils.jsonl import append_jsonl
 
 
-SENSITIVE_KEYS = {"api_key", "token", "password", "secret"}
-
-
 def redact(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {
-            key: "***" if key.lower() in SENSITIVE_KEYS else redact(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [redact(item) for item in value]
-    return value
+    return redact_sensitive(value)
 
 
 class AuditLogger:

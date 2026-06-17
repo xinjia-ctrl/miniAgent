@@ -3,10 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
-SENSITIVE_FILENAMES = {".env", ".env.local", ".env.production", "id_rsa", "id_dsa"}
-SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
-
+from miniagent.security.paths import is_sensitive_path
 
 def resolve_workspace_path(
     cwd: str | Path,
@@ -34,12 +31,6 @@ def resolve_workspace_path(
     if not allow_missing and not resolved.exists():
         raise FileNotFoundError(f"文件不存在：{user_path}")
     return resolved
-
-
-def is_sensitive_path(path: Path) -> bool:
-    name = path.name.lower()
-    return name in SENSITIVE_FILENAMES or path.suffix.lower() in SENSITIVE_SUFFIXES
-
 
 def relative_to_workspace(cwd: str | Path, path: str | Path) -> str:
     root = Path(cwd).resolve(strict=False)

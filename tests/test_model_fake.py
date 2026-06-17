@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from miniagent.messages import TextBlock, assistant_message
 from miniagent.config import ModelSettings
+from miniagent.messages import TextBlock, assistant_message, tool_result_message
 from miniagent.model import (
     AnthropicCompatibleModelClient,
     FakeModelClient,
@@ -37,6 +37,24 @@ async def test_fake_model_accepts_message_item() -> None:
     events = [event async for event in client.stream(ModelRequest(messages=[]))]
 
     assert events[-1].data["message"]["content"][0]["text"] == "done"
+
+
+async def test_fake_model_hides_internal_tool_source_marker() -> None:
+    client = FakeModelClient()
+    request = ModelRequest(
+        messages=[
+            tool_result_message(
+                "tool_1",
+                "[source=tool_result trust=untrusted tool=read_file]\nREADME 内容",
+            )
+        ]
+    )
+
+    events = [event async for event in client.stream(request)]
+
+    text = events[-1].data["message"]["content"][0]["text"]
+    assert "trust=untrusted" not in text
+    assert "README 内容" in text
 
 
 def test_create_model_client_from_settings() -> None:

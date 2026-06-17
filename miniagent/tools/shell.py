@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import re
-
 from pydantic import BaseModel, Field
 
+from miniagent.security.shell import classify_shell_command, is_dangerous_shell_command
 from miniagent.tool_base import BaseTool, ToolContext, ToolResult
 from miniagent.utils.subprocess import run_subprocess
 
@@ -20,8 +19,9 @@ class ShellTool(BaseTool):
 
     async def call(self, input_data: BaseModel, context: ToolContext) -> ToolResult:
         args = ShellInput.model_validate(input_data)
-        if is_dangerous_command(args.command) and context.permission_mode != "bypass":
-            return ToolResult(display="危险 shell 命令被拦截", is_error=True)
+        classification = classify_shell_command(args.command)
+        if classification.is_dangerous:
+            return ToolResult(display=f"{classification.reason}被拦截", is_error=True)
         result = await run_subprocess(
             args.command,
             cwd=context.cwd,
@@ -38,15 +38,4 @@ class ShellTool(BaseTool):
 
 
 def is_dangerous_command(command: str) -> bool:
-    normalized = re.sub(r"\s+", " ", command.strip().lower())
-    patterns = [
-        r"\bremove-item\b",
-        r"\bdel\b",
-        r"\brmdir\b",
-        r"\brd\b",
-        r"\bformat\b",
-        r"\bdiskpart\b",
-        r"\bgit reset --hard\b",
-        r"\bgit clean\b",
-    ]
-    return any(re.search(pattern, normalized) for pattern in patterns)
+    return is_dangerous_shell_command(command)

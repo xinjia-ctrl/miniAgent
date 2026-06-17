@@ -74,7 +74,8 @@ class FakeModelClient:
     def _default_response(self, request: ModelRequest) -> Message:
         last = request.messages[-1] if request.messages else None
         if last and any(isinstance(block, ToolResultBlock) for block in last.content):
-            return assistant_text("已收到工具结果：\n" + clip_text(message_text(last), 1200))
+            tool_text = _strip_internal_source_markers(message_text(last))
+            return assistant_text("已收到工具结果：\n" + clip_text(tool_text, 1200))
 
         prompt = message_text(last) if last else ""
         if "README.md" in prompt and not self._has_recent_tool_result(request):
@@ -105,6 +106,12 @@ def tool_call_message(name: str, input_data: dict[str, Any], text: str = "") -> 
         blocks.append(TextBlock(text=text))
     blocks.append(ToolUseBlock(id=new_id("tool"), name=name, input=input_data))
     return assistant_message(blocks)
+
+
+def _strip_internal_source_markers(text: str) -> str:
+    return "\n".join(
+        line for line in text.splitlines() if "[source=tool_result " not in line
+    )
 
 
 class OpenAICompatibleModelClient:

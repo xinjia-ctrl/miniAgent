@@ -141,9 +141,13 @@ class QueryEngine:
                 yield EngineEvent(type=TOOL_START, data={"call": call.model_dump(mode="json")})
 
             for result in await self._run_tools(calls):
+                tool_output = (
+                    f"[source=tool_result trust=untrusted tool={result.call.name}]\n"
+                    f"{result.result.display}"
+                )
                 block_message = tool_result_message(
                     result.call.id,
-                    result.result.display,
+                    tool_output,
                     is_error=result.result.is_error,
                 )
                 self.messages.append(block_message)

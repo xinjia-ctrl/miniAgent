@@ -13,3 +13,14 @@ def test_audit_logger_redacts_sensitive_values(tmp_path) -> None:
     assert "secret" not in content
     assert "abc" not in content
     assert "***" in content
+
+
+def test_audit_logger_redacts_secret_text(tmp_path) -> None:
+    path = tmp_path / "audit.jsonl"
+    logger = AuditLogger(path)
+
+    logger.log("tool_result", {"display": "password=hunter2"})
+
+    content = path.read_text(encoding="utf-8")
+    assert "hunter2" not in content
+    assert "***" in content

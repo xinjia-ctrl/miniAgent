@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from miniagent.messages import Message, ToolUseBlock
 from miniagent.permissions import PermissionDecision, PermissionManager
+from miniagent.security.secrets import redact_secret_text
 from miniagent.tool_base import ToolContext, ToolRegistry, ToolResult
 from miniagent.utils.text import clip_text
 from miniagent.audit import AuditLogger
@@ -124,7 +125,15 @@ class ToolRunner:
             result = await tool.call(input_data, context)
         except Exception as exc:  # 工具边界兜底，避免 agent loop 崩溃。
             result = ToolResult(display=f"工具执行失败：{exc}", is_error=True)
-        result.display = clip_text(result.display, context.max_result_chars)
+        result.display = clip_text(redact_secret_text(result.display), context.max_result_chars)
+        result.structured_content = {
+            **(result.structured_content or {}),
+            "source": {
+                "kind": "tool_result",
+                "tool": call.name,
+                "trust": "untrusted",
+            },
+        }
         self._log(
             "tool_result",
             {
