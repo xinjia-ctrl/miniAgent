@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from miniagent.tool_base import BaseTool, ToolContext, ToolResult
-from miniagent.tools.write_file import _ensure_fresh_read
+from miniagent.tools.write_file import _ensure_fresh_read, _record_change
 from miniagent.utils.diff import unified_diff
 from miniagent.utils.paths import resolve_workspace_path
 
@@ -35,7 +35,18 @@ class EditFileTool(BaseTool):
             )
         new = old.replace(args.old_string, args.new_string, -1 if args.replace_all else 1)
         diff = unified_diff(old, new, fromfile=str(path), tofile=str(path))
+        change = _record_change(
+            context,
+            tool_name=self.name,
+            path=path,
+            before_content=old,
+            after_content=new,
+            diff=diff,
+        )
         path.write_text(new, encoding="utf-8")
         stat = path.stat()
         context.file_reads[str(path)] = {"mtime_ns": stat.st_mtime_ns, "size": stat.st_size}
-        return ToolResult(display=diff, structured_content={"path": str(path), "replacements": count})
+        return ToolResult(
+            display=diff,
+            structured_content={"path": str(path), "replacements": count, "change_id": change.id},
+        )

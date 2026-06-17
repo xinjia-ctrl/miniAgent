@@ -17,6 +17,7 @@ class ToolContext(BaseModel):
     session_id: str
     permission_mode: str
     max_result_chars: int = 6000
+    data_dir: str | None = None
     file_reads: dict[str, dict[str, Any]] = Field(default_factory=dict)
     state: dict[str, Any] = Field(default_factory=dict)
 

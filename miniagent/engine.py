@@ -177,6 +177,7 @@ class QueryEngine:
             session_id=self.session_id,
             permission_mode=self.config.permission_mode,
             max_result_chars=self.config.max_result_chars,
+            data_dir=str(self.config.resolved_data_dir),
             file_reads=self.file_reads,
             state=self.state,
         )

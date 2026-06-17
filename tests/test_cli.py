@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
+from miniagent.changes import ChangeStore
 from miniagent.cli import app
 from miniagent.messages import user_text
 from miniagent.storage import SessionRecord, SessionStorage
@@ -79,3 +80,29 @@ def test_cli_sessions_list_and_export(tmp_path) -> None:
     assert '"snapshot"' in export_result.output
     assert '"events"' in export_result.output
     assert '"rebuilt"' in export_result.output
+
+
+def test_cli_changes_show_and_revert(tmp_path) -> None:
+    target = tmp_path / "demo.txt"
+    target.write_text("before\n", encoding="utf-8")
+    change = ChangeStore(tmp_path / ".miniagent").record_change(
+        session_id="sess_cli",
+        tool_name="write_file",
+        cwd=tmp_path,
+        path=target,
+        before_content="before\n",
+        after_content="after\n",
+        diff="--- demo.txt\n+++ demo.txt\n",
+    )
+    target.write_text("after\n", encoding="utf-8")
+
+    show_result = CliRunner().invoke(app, ["changes", "show", "--cwd", str(tmp_path)])
+    revert_result = CliRunner().invoke(
+        app,
+        ["changes", "revert", change.id, "--cwd", str(tmp_path)],
+    )
+
+    assert show_result.exit_code == 0
+    assert change.id in show_result.output
+    assert revert_result.exit_code == 0
+    assert target.read_text(encoding="utf-8") == "before\n"

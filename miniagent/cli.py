@@ -16,8 +16,10 @@ from miniagent.repl import run_repl_sync
 app = typer.Typer(add_completion=False, invoke_without_command=True)
 context_app = typer.Typer(help="查看上下文预算和 compact 状态。")
 sessions_app = typer.Typer(help="查看和导出会话。")
+changes_app = typer.Typer(help="查看和回滚文件变更。")
 app.add_typer(context_app, name="context")
 app.add_typer(sessions_app, name="sessions")
+app.add_typer(changes_app, name="changes")
 
 
 @app.callback(invoke_without_command=True)
@@ -140,6 +142,36 @@ def export_session(
         typer.echo("没有找到会话。")
         raise typer.Exit(code=1)
     typer.echo(json.dumps(exported, ensure_ascii=False, indent=2))
+
+
+@changes_app.command("show")
+def show_changes(
+    change_id: Optional[str] = typer.Argument(None, help="变更 ID；省略时列出最近变更。"),
+    limit: int = typer.Option(20, "--limit", min=1, max=100, help="列出最近变更数量。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    config = build_agent_config(cwd=cwd)
+    application = MiniAgentApplication.from_config(config)
+    try:
+        typer.echo(application.describe_changes(change_id, limit=limit))
+    except KeyError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+
+
+@changes_app.command("revert")
+def revert_change(
+    change_id: str = typer.Argument(..., help="要回滚的变更 ID。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
+) -> None:
+    config = build_agent_config(cwd=cwd)
+    application = MiniAgentApplication.from_config(config)
+    try:
+        result = application.revert_change(change_id)
+    except (KeyError, ValueError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+    typer.echo(result.message)
 
 
 async def _run_print(engine: QueryEngine, prompt: str) -> None:

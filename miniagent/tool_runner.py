@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from miniagent.changes import ChangeStore
 from miniagent.messages import Message, ToolUseBlock
 from miniagent.permissions import PermissionDecision, PermissionManager
 from miniagent.security.secrets import redact_secret_text
 from miniagent.tool_base import ToolContext, ToolRegistry, ToolResult
 from miniagent.utils.text import clip_text
 from miniagent.audit import AuditLogger
+
+FILE_MUTATION_TOOLS = {"write_file", "edit_file"}
 
 
 class ToolCall(BaseModel):
@@ -72,8 +76,18 @@ class ToolRunner:
         concurrent, serial = partition_tool_calls(known_calls, self.registry)
         if concurrent:
             results.extend(await asyncio.gather(*(self.run_call(call, context) for call in concurrent)))
+        applied_change_ids: list[str] = []
         for call in serial:
-            results.append(await self.run_call(call, context))
+            result = await self.run_call(call, context)
+            change_id = _result_change_id(result.result)
+            if change_id and not result.result.is_error:
+                applied_change_ids.append(change_id)
+            elif result.result.is_error and call.name in FILE_MUTATION_TOOLS and applied_change_ids:
+                rollback_display = self._rollback_changes(applied_change_ids, context)
+                if rollback_display:
+                    result.result.display = f"{result.result.display}\n\n[rollback]\n{rollback_display}"
+                applied_change_ids.clear()
+            results.append(result)
         return results
 
     async def run_call(self, call: ToolCall, context: ToolContext) -> ToolExecutionResult:
@@ -134,6 +148,17 @@ class ToolRunner:
                 "trust": "untrusted",
             },
         }
+        change_id = _result_change_id(result)
+        if change_id and not result.is_error:
+            self._log(
+                "file_change",
+                {
+                    "tool": call.name,
+                    "call_id": call.id,
+                    "change_id": change_id,
+                    "diff": result.display,
+                },
+            )
         self._log(
             "tool_result",
             {
@@ -148,3 +173,21 @@ class ToolRunner:
     def _log(self, event_type: str, data: dict[str, Any]) -> None:
         if self.audit_logger:
             self.audit_logger.log(event_type, data)
+
+    def _rollback_changes(self, change_ids: list[str], context: ToolContext) -> str:
+        data_dir = context.data_dir or str(Path(context.cwd) / ".miniagent")
+        try:
+            results = ChangeStore(data_dir).revert_many(change_ids, cwd=context.cwd)
+        except Exception as exc:
+            self._log("file_change_rollback_error", {"change_ids": change_ids, "error": str(exc)})
+            return f"回滚失败：{exc}"
+        payload = [result.model_dump(mode="json") for result in results]
+        self._log("file_change_rollback", {"change_ids": change_ids, "results": payload})
+        return "\n".join(result.message for result in results)
+
+
+def _result_change_id(result: ToolResult) -> str | None:
+    if not result.structured_content:
+        return None
+    value = result.structured_content.get("change_id")
+    return str(value) if value else None

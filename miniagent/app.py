@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from miniagent.bootstrap import RuntimeContainer, build_runtime_container
+from miniagent.changes import ChangeStore, RevertResult
 from miniagent.config import AgentConfig
 from miniagent.engine import QueryEngine
 from miniagent.storage import SessionRecord, SessionSummary
@@ -49,6 +50,12 @@ class MiniAgentApplication:
                 return None
             session_id = latest.id
         return self.container.storage.export(session_id)
+
+    def describe_changes(self, change_id: str | None = None, *, limit: int = 20) -> str:
+        return ChangeStore(self.config.resolved_data_dir).describe(change_id, limit=limit)
+
+    def revert_change(self, change_id: str) -> RevertResult:
+        return ChangeStore(self.config.resolved_data_dir).revert(change_id, cwd=self.config.cwd)
 
     def diagnostics(self) -> dict[str, str]:
         config = self.config
