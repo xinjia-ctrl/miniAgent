@@ -1,0 +1,43 @@
+{
+  "id": "edit_then_shell_test",
+  "description": "编辑文件后运行测试命令",
+  "tags": ["edit", "test"],
+  "prompt": "修改文件后运行测试",
+  "permission_mode": "bypass",
+  "workspace_files": {
+    "target.txt": "old\n"
+  },
+  "expected_files": {
+    "target.txt": {
+      "equals": "new\n"
+    }
+  },
+  "max_tool_calls": 4,
+  "fake_script": [
+    {
+      "text": "读取文件。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "target.txt"
+      }
+    },
+    {
+      "text": "修改文件。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "target.txt",
+        "old_string": "old",
+        "new_string": "new"
+      }
+    },
+    {
+      "text": "运行测试命令。",
+      "tool": "shell",
+      "input": {
+        "command": "python --version",
+        "timeout_seconds": 10
+      }
+    },
+    "修改和测试完成。"
+  ]
+}

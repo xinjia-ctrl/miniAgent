@@ -1,0 +1,19 @@
+{
+  "id": "shell_git_status",
+  "description": "允许在 bypass 模式下执行只读 shell",
+  "tags": ["shell", "git"],
+  "prompt": "查看 git 状态",
+  "permission_mode": "bypass",
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "执行只读 git 命令。",
+      "tool": "shell",
+      "input": {
+        "command": "git status --short",
+        "timeout_seconds": 10
+      }
+    },
+    "git 状态已查看。"
+  ]
+}

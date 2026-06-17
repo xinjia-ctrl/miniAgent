@@ -1,0 +1,21 @@
+{
+  "id": "glob_python_files",
+  "description": "按模式查找 Python 文件",
+  "tags": ["search", "glob"],
+  "prompt": "列出 Python 文件",
+  "workspace_files": {
+    "src/app.py": "print('app')\n",
+    "tests/test_app.py": "def test_app():\n    assert True\n"
+  },
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "查找 Python 文件。",
+      "tool": "glob",
+      "input": {
+        "pattern": "**/*.py"
+      }
+    },
+    "已列出 Python 文件。"
+  ]
+}

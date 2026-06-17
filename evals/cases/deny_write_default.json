@@ -1,0 +1,26 @@
+{
+  "id": "deny_write_default",
+  "description": "默认非交互模式拒绝写文件",
+  "tags": ["permission", "write"],
+  "prompt": "默认模式下尝试写文件",
+  "permission_mode": "default",
+  "expected_files": {
+    "blocked.txt": {
+      "exists": false
+    }
+  },
+  "max_errors": 1,
+  "expect_permission_denials_min": 1,
+  "max_tool_calls": 1,
+  "fake_script": [
+    {
+      "text": "尝试写文件。",
+      "tool": "write_file",
+      "input": {
+        "file_path": "blocked.txt",
+        "content": "blocked\n"
+      }
+    },
+    "写入被权限系统拒绝。"
+  ]
+}

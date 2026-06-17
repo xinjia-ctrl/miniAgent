@@ -1,0 +1,26 @@
+{
+  "id": "plan_update",
+  "description": "记录计划状态",
+  "tags": ["state", "plan"],
+  "prompt": "生成两步计划",
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "更新计划。",
+      "tool": "plan_update",
+      "input": {
+        "steps": [
+          {
+            "step": "读取代码",
+            "status": "completed"
+          },
+          {
+            "step": "修改测试",
+            "status": "in_progress"
+          }
+        ]
+      }
+    },
+    "计划已更新。"
+  ]
+}

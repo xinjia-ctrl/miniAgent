@@ -1,0 +1,22 @@
+{
+  "id": "todo_update",
+  "description": "更新 todo 工作记忆",
+  "tags": ["state", "todo"],
+  "prompt": "记录当前 todo",
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "写入 todo。",
+      "tool": "todo_write",
+      "input": {
+        "items": [
+          {
+            "content": "补评测报告",
+            "status": "in_progress"
+          }
+        ]
+      }
+    },
+    "Todo 已记录。"
+  ]
+}

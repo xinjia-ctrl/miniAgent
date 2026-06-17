@@ -1,0 +1,17 @@
+{
+  "id": "unknown_tool_recovery",
+  "description": "未知工具错误后仍能结束会话",
+  "tags": ["recovery", "tool"],
+  "prompt": "调用不存在的工具后恢复",
+  "max_errors": 1,
+  "recovery_expected": true,
+  "max_tool_calls": 1,
+  "fake_script": [
+    {
+      "text": "调用不存在的工具。",
+      "tool": "missing_tool",
+      "input": {}
+    },
+    "未知工具错误已被 runtime 捕获。"
+  ]
+}

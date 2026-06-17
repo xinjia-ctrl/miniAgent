@@ -1,0 +1,21 @@
+{
+  "id": "context_compact",
+  "description": "低预算上下文仍能完成工具回合",
+  "tags": ["context", "compact"],
+  "prompt": "在很小上下文预算下读取 README。 old old old old old old old old old old old old old old old old old old old old",
+  "context_token_budget": 32,
+  "workspace_files": {
+    "README.md": "# Compact\n"
+  },
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "读取 README。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "README.md"
+      }
+    },
+    "低预算上下文下也完成。"
+  ]
+}

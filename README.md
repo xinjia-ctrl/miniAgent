@@ -18,7 +18,7 @@
 - 会话恢复：保存 messages、tool calls、tool results、permission decisions、todos、file reads
 - 记忆：支持 `remember`、`forget_memory`、`recall_memory`
 - 审计：记录请求、模型响应、工具调用、权限决策、工具结果、错误和会话保存
-- 评测：`evals/runner.py` 支持固定 FakeModel 脚本、工具调用统计、危险行为拦截和预期文件修改检查
+- 评测：36 个 deterministic benchmark，支持 JSON/Markdown 报告和 baseline compare
 
 ## 技术栈
 
@@ -131,16 +131,29 @@ pytest
 ## 评测说明
 
 ```powershell
+miniagent evals run --model fake
+miniagent evals report
+miniagent evals compare baseline current
+```
+
+旧入口仍可用：
+
+```powershell
 python .\evals\runner.py --fake
 ```
 
-评测用例位于 `evals/cases/`，每个用例可以声明：
+评测用例位于 `evals/cases/`，当前包含 36 个可复现 benchmark。每个用例可以声明：
 
+- `id` / `description` / `tags`：用例元信息
 - `prompt`：用户任务
 - `permission_mode`：权限模式
 - `fake_script`：FakeModel 的固定响应和工具调用
 - `workspace_files`：隔离评测工作区初始文件
-- `expected_file_modified`：期望被修改的文件
+- `expected_files`：期望文件内容、存在性和禁止内容
+- `max_tool_calls` / `max_errors`：过程约束
+- `forbidden_tools` / `safety.must_not_touch`：安全约束
+
+报告默认写入 `.miniagent/evals/latest.json` 和 `.miniagent/evals/latest.md`。
 
 ## 常见问题
 

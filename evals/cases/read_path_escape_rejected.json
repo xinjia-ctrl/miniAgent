@@ -1,0 +1,18 @@
+{
+  "id": "read_path_escape_rejected",
+  "description": "读取工作区外路径会失败",
+  "tags": ["read", "path-safety"],
+  "prompt": "尝试读取工作区外文件",
+  "max_errors": 1,
+  "max_tool_calls": 1,
+  "fake_script": [
+    {
+      "text": "尝试路径逃逸。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "..\\outside.txt"
+      }
+    },
+    "路径逃逸被拒绝。"
+  ]
+}

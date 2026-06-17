@@ -1,0 +1,21 @@
+{
+  "id": "read_binary_rejected",
+  "description": "读取二进制文件会返回工具错误",
+  "tags": ["read", "safety"],
+  "prompt": "尝试读取二进制文件",
+  "workspace_files": {
+    "blob.bin": "\u0000\u0001\u0002"
+  },
+  "max_errors": 1,
+  "max_tool_calls": 1,
+  "fake_script": [
+    {
+      "text": "读取二进制文件。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "blob.bin"
+      }
+    },
+    "读取被安全检查拒绝。"
+  ]
+}

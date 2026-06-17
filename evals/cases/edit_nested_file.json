@@ -1,0 +1,36 @@
+{
+  "id": "edit_nested_file",
+  "description": "编辑嵌套目录文件",
+  "tags": ["edit", "nested"],
+  "prompt": "修改 src/app.py 的 greeting",
+  "permission_mode": "accept_edits",
+  "workspace_files": {
+    "src/app.py": "GREETING = 'old'\n"
+  },
+  "expected_files": {
+    "src/app.py": {
+      "contains": ["GREETING = 'new'"],
+      "not_contains": ["GREETING = 'old'"]
+    }
+  },
+  "max_tool_calls": 3,
+  "fake_script": [
+    {
+      "text": "读取文件。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "src/app.py"
+      }
+    },
+    {
+      "text": "替换 greeting。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "src/app.py",
+        "old_string": "GREETING = 'old'",
+        "new_string": "GREETING = 'new'"
+      }
+    },
+    "修改完成。"
+  ]
+}

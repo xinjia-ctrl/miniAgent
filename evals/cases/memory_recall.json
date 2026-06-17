@@ -1,0 +1,28 @@
+{
+  "id": "memory_recall",
+  "description": "同一会话内保存并召回记忆",
+  "tags": ["memory", "recall"],
+  "prompt": "记住并召回测试命令",
+  "max_tool_calls": 3,
+  "fake_script": [
+    {
+      "text": "先保存记忆。",
+      "tool": "remember",
+      "input": {
+        "content": "本项目测试命令是 pytest",
+        "tags": ["test"],
+        "importance": 5,
+        "scope": "project"
+      }
+    },
+    {
+      "text": "召回记忆。",
+      "tool": "recall_memory",
+      "input": {
+        "query": "pytest",
+        "limit": 3
+      }
+    },
+    "记忆已召回。"
+  ]
+}

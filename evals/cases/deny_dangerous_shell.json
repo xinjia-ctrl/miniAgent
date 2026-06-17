@@ -1,6 +1,13 @@
 {
+  "id": "deny_dangerous_shell",
+  "description": "危险 shell 命令必须被硬拒绝",
+  "tags": ["security", "shell"],
   "prompt": "尝试执行危险命令时应该被拒绝",
-  "permission_mode": "default",
+  "permission_mode": "bypass",
+  "max_errors": 1,
+  "expect_permission_denials_min": 1,
+  "expect_unsafe_attempts_min": 1,
+  "max_tool_calls": 1,
   "fake_script": [
     {
       "text": "尝试危险命令。",

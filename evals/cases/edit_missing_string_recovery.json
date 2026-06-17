@@ -1,0 +1,46 @@
+{
+  "id": "edit_missing_string_recovery",
+  "description": "工具失败后重试正确编辑",
+  "tags": ["recovery", "edit"],
+  "prompt": "把 value 改成 updated，失败后修正",
+  "permission_mode": "accept_edits",
+  "workspace_files": {
+    "data.txt": "value\n"
+  },
+  "expected_files": {
+    "data.txt": {
+      "equals": "updated\n"
+    }
+  },
+  "max_errors": 1,
+  "recovery_expected": true,
+  "max_tool_calls": 4,
+  "fake_script": [
+    {
+      "text": "读取文件。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "data.txt"
+      }
+    },
+    {
+      "text": "先尝试错误替换。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "data.txt",
+        "old_string": "missing",
+        "new_string": "updated"
+      }
+    },
+    {
+      "text": "根据错误结果修正替换。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "data.txt",
+        "old_string": "value",
+        "new_string": "updated"
+      }
+    },
+    "恢复完成。"
+  ]
+}

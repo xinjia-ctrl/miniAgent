@@ -7,6 +7,15 @@ from typing import Optional
 
 import typer
 
+from evals.runner import (
+    DEFAULT_CASES_DIR,
+    DEFAULT_OUTPUT_DIR,
+    compare_runs,
+    format_summary_text,
+    read_report,
+    render_compare_markdown,
+    run_eval_suite,
+)
 from miniagent.app import MiniAgentApplication
 from miniagent.bootstrap import build_agent_config
 from miniagent.engine import QueryEngine
@@ -21,12 +30,14 @@ changes_app = typer.Typer(help="查看和回滚文件变更。")
 memory_app = typer.Typer(help="管理长期记忆。")
 tools_app = typer.Typer(help="查看已注册工具。")
 plugins_app = typer.Typer(help="管理本地插件。")
+evals_app = typer.Typer(help="运行和查看评测。")
 app.add_typer(context_app, name="context")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(changes_app, name="changes")
 app.add_typer(memory_app, name="memory")
 app.add_typer(tools_app, name="tools")
 app.add_typer(plugins_app, name="plugins")
+app.add_typer(evals_app, name="evals")
 
 
 @app.callback(invoke_without_command=True)
@@ -371,6 +382,65 @@ def install_plugin(
         typer.echo(str(exc))
         raise typer.Exit(code=1) from exc
     typer.echo(f"已安装插件：{status.name}")
+
+
+@evals_app.command("run")
+def run_evals(
+    model: str = typer.Option("fake", "--model", help="评测模型，目前支持 fake。"),
+    case: Optional[str] = typer.Option(None, "--case", help="只运行指定 case id。"),
+    name: Optional[str] = typer.Option(None, "--name", help="指定 run id，便于 baseline compare。"),
+    cases_dir: Path = typer.Option(DEFAULT_CASES_DIR, "--cases-dir", help="评测用例目录。"),
+    output_dir: Path = typer.Option(DEFAULT_OUTPUT_DIR, "--output-dir", help="报告输出目录。"),
+) -> None:
+    try:
+        run = asyncio.run(
+            run_eval_suite(
+                model=model,
+                case_id=case,
+                cases_dir=cases_dir,
+                output_dir=output_dir,
+                run_id=name,
+            )
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    typer.echo(format_summary_text(run))
+    typer.echo(f"report: {output_dir / 'latest.md'}")
+
+
+@evals_app.command("report")
+def report_evals(
+    run: str = typer.Option("latest", "--run", help="run id、报告路径或 latest。"),
+    format: str = typer.Option("markdown", "--format", help="输出格式：markdown 或 json。"),
+    output_dir: Path = typer.Option(DEFAULT_OUTPUT_DIR, "--output-dir", help="报告输出目录。"),
+) -> None:
+    if format not in {"markdown", "json"}:
+        typer.echo("format 必须是 markdown 或 json。")
+        raise typer.Exit(code=1)
+    try:
+        typer.echo(read_report(run, output_dir=output_dir, format=format))
+    except FileNotFoundError as exc:
+        typer.echo(f"没有找到评测报告：{exc.filename}")
+        raise typer.Exit(code=1) from exc
+
+
+@evals_app.command("compare")
+def compare_evals(
+    baseline: str = typer.Argument(..., help="baseline run id、JSON 路径或 latest。"),
+    current: str = typer.Argument(..., help="current run id、JSON 路径或 latest。"),
+    output_dir: Path = typer.Option(DEFAULT_OUTPUT_DIR, "--output-dir", help="报告输出目录。"),
+    json_output: bool = typer.Option(False, "--json", help="输出 JSON。"),
+) -> None:
+    try:
+        result = compare_runs(baseline, current, output_dir=output_dir)
+    except FileNotFoundError as exc:
+        typer.echo(f"没有找到评测结果：{exc.filename}")
+        raise typer.Exit(code=1) from exc
+    if json_output:
+        typer.echo(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        typer.echo(render_compare_markdown(result))
 
 
 async def _run_print(engine: QueryEngine, prompt: str) -> None:

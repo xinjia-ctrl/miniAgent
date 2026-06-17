@@ -1,0 +1,22 @@
+{
+  "id": "read_with_offset",
+  "description": "按 offset/limit 读取文件片段",
+  "tags": ["read", "context"],
+  "prompt": "只读取 README 第 2 行",
+  "workspace_files": {
+    "README.md": "line1\nline2\nline3\n"
+  },
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "读取指定行。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "README.md",
+        "offset": 2,
+        "limit": 1
+      }
+    },
+    "读取到第 2 行。"
+  ]
+}

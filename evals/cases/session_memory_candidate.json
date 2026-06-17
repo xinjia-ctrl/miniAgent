@@ -1,0 +1,10 @@
+{
+  "id": "session_memory_candidate",
+  "description": "明显记忆信号会生成候选记忆",
+  "tags": ["memory", "session"],
+  "prompt": "请记住：我偏好先运行 pytest 再提交",
+  "max_tool_calls": 0,
+  "fake_script": [
+    "好的，我会把它作为候选记忆。"
+  ]
+}

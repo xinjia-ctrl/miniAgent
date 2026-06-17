@@ -1,0 +1,47 @@
+{
+  "id": "edit_ambiguous_replace_all",
+  "description": "多处匹配失败后使用 replace_all 修正",
+  "tags": ["recovery", "edit"],
+  "prompt": "把两个 foo 都改成 bar",
+  "permission_mode": "accept_edits",
+  "workspace_files": {
+    "data.txt": "foo\nfoo\n"
+  },
+  "expected_files": {
+    "data.txt": {
+      "equals": "bar\nbar\n"
+    }
+  },
+  "max_errors": 1,
+  "recovery_expected": true,
+  "max_tool_calls": 4,
+  "fake_script": [
+    {
+      "text": "读取文件。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "data.txt"
+      }
+    },
+    {
+      "text": "先尝试普通替换。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "data.txt",
+        "old_string": "foo",
+        "new_string": "bar"
+      }
+    },
+    {
+      "text": "设置 replace_all。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "data.txt",
+        "old_string": "foo",
+        "new_string": "bar",
+        "replace_all": true
+      }
+    },
+    "全部替换完成。"
+  ]
+}

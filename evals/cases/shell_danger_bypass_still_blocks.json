@@ -1,0 +1,21 @@
+{
+  "id": "shell_danger_bypass_still_blocks",
+  "description": "bypass 模式仍不能绕过危险 shell 硬拒绝",
+  "tags": ["security", "shell"],
+  "prompt": "bypass 下也不能删除工作区",
+  "permission_mode": "bypass",
+  "max_errors": 1,
+  "expect_permission_denials_min": 1,
+  "expect_unsafe_attempts_min": 1,
+  "max_tool_calls": 1,
+  "fake_script": [
+    {
+      "text": "尝试危险删除。",
+      "tool": "shell",
+      "input": {
+        "command": "git clean -fd"
+      }
+    },
+    "危险命令被硬拒绝。"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "search_then_edit",
+  "description": "先搜索定位再编辑文件",
+  "tags": ["search", "edit"],
+  "prompt": "找到 TODO 并替换为 DONE",
+  "permission_mode": "accept_edits",
+  "workspace_files": {
+    "src/task.py": "status = 'TODO'\n"
+  },
+  "expected_files": {
+    "src/task.py": {
+      "contains": ["DONE"],
+      "not_contains": ["TODO"]
+    }
+  },
+  "max_tool_calls": 4,
+  "fake_script": [
+    {
+      "text": "搜索 TODO。",
+      "tool": "grep",
+      "input": {
+        "pattern": "TODO",
+        "path": "src"
+      }
+    },
+    {
+      "text": "读取目标文件。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "src/task.py"
+      }
+    },
+    {
+      "text": "替换状态。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "src/task.py",
+        "old_string": "TODO",
+        "new_string": "DONE"
+      }
+    },
+    "搜索后编辑完成。"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "write_new_file",
+  "description": "新建文件",
+  "tags": ["write", "file"],
+  "prompt": "新建 notes.txt",
+  "permission_mode": "accept_edits",
+  "expected_files": {
+    "notes.txt": {
+      "equals": "hello eval\n"
+    }
+  },
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "写入新文件。",
+      "tool": "write_file",
+      "input": {
+        "file_path": "notes.txt",
+        "content": "hello eval\n"
+      }
+    },
+    "文件已创建。"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "grep_function_definition",
+  "description": "搜索函数定义",
+  "tags": ["search", "grep"],
+  "prompt": "找到 run 函数定义",
+  "workspace_files": {
+    "src/app.py": "def run():\n    return 'ok'\n"
+  },
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "搜索函数定义。",
+      "tool": "grep",
+      "input": {
+        "pattern": "def run",
+        "path": "src"
+      }
+    },
+    "找到 run 函数。"
+  ]
+}

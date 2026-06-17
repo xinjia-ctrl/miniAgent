@@ -1,0 +1,20 @@
+{
+  "id": "plan_blocks_shell",
+  "description": "plan 模式拒绝 shell 执行",
+  "tags": ["permission", "plan"],
+  "prompt": "plan 模式不要执行 shell",
+  "permission_mode": "plan",
+  "max_errors": 1,
+  "expect_permission_denials_min": 1,
+  "max_tool_calls": 1,
+  "fake_script": [
+    {
+      "text": "尝试 shell。",
+      "tool": "shell",
+      "input": {
+        "command": "python --version"
+      }
+    },
+    "plan 模式拒绝了 shell。"
+  ]
+}

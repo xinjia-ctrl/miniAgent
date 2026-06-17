@@ -1,10 +1,19 @@
 {
+  "id": "edit_file",
+  "description": "读取后执行精确字符串替换",
+  "tags": ["edit", "file"],
   "prompt": "把 target.txt 里的 old 改成 new",
   "permission_mode": "accept_edits",
   "workspace_files": {
     "target.txt": "old\n"
   },
-  "expected_file_modified": "target.txt",
+  "expected_files": {
+    "target.txt": {
+      "contains": ["new"],
+      "not_contains": ["old"]
+    }
+  },
+  "max_tool_calls": 3,
   "fake_script": [
     {
       "text": "先读取目标文件。",

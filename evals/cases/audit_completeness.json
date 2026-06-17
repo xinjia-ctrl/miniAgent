@@ -1,0 +1,10 @@
+{
+  "id": "audit_completeness",
+  "description": "简单会话也应写入审计日志",
+  "tags": ["audit"],
+  "prompt": "直接完成并保存会话",
+  "max_tool_calls": 0,
+  "fake_script": [
+    "直接完成。"
+  ]
+}

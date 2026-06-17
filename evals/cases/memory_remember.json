@@ -1,0 +1,25 @@
+{
+  "id": "memory_remember",
+  "description": "保存长期记忆",
+  "tags": ["memory"],
+  "prompt": "记住项目测试命令",
+  "expected_files": {
+    ".miniagent/memory.json": {
+      "contains": ["pytest", "project"]
+    }
+  },
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "保存记忆。",
+      "tool": "remember",
+      "input": {
+        "content": "本项目测试命令是 pytest",
+        "tags": ["test"],
+        "importance": 5,
+        "scope": "project"
+      }
+    },
+    "记忆已保存。"
+  ]
+}

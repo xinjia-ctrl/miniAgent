@@ -1,6 +1,13 @@
 {
-  "prompt": "读取 README.md 并总结",
+  "id": "read_project",
+  "description": "读取 README 并完成项目摘要",
+  "tags": ["read", "project"],
+  "prompt": "读取 README.md 并总结项目",
   "permission_mode": "default",
+  "workspace_files": {
+    "README.md": "# Demo Agent\nminiAgent runtime\n"
+  },
+  "max_tool_calls": 2,
   "fake_script": [
     {
       "text": "先读取 README。",
@@ -9,6 +16,6 @@
         "file_path": "README.md"
       }
     },
-    "README 已读取，项目是一个最小 coding agent。"
+    "README 已读取，项目是一个最小 coding agent runtime。"
   ]
 }

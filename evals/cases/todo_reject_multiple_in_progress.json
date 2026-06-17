@@ -1,0 +1,27 @@
+{
+  "id": "todo_reject_multiple_in_progress",
+  "description": "todo 不允许多个 in_progress",
+  "tags": ["state", "todo", "recovery"],
+  "prompt": "尝试写入两个进行中 todo",
+  "max_errors": 1,
+  "max_tool_calls": 1,
+  "fake_script": [
+    {
+      "text": "写入非法 todo。",
+      "tool": "todo_write",
+      "input": {
+        "items": [
+          {
+            "content": "a",
+            "status": "in_progress"
+          },
+          {
+            "content": "b",
+            "status": "in_progress"
+          }
+        ]
+      }
+    },
+    "runtime 拒绝了多个 in_progress。"
+  ]
+}

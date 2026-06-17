@@ -1,0 +1,21 @@
+{
+  "id": "glob_excludes_cache",
+  "description": "glob 排除缓存目录",
+  "tags": ["search", "glob"],
+  "prompt": "查找 Python 文件时排除缓存目录",
+  "workspace_files": {
+    "src/app.py": "print('ok')\n",
+    "__pycache__/ignored.py": "print('ignore')\n"
+  },
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "查找 Python 文件。",
+      "tool": "glob",
+      "input": {
+        "pattern": "**/*.py"
+      }
+    },
+    "缓存目录已排除。"
+  ]
+}

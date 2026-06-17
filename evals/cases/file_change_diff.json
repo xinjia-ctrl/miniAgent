@@ -1,0 +1,35 @@
+{
+  "id": "file_change_diff",
+  "description": "文件变更会记录 diff 和 change id",
+  "tags": ["edit", "audit"],
+  "prompt": "修改 changelog",
+  "permission_mode": "accept_edits",
+  "workspace_files": {
+    "CHANGELOG.md": "old entry\n"
+  },
+  "expected_files": {
+    "CHANGELOG.md": {
+      "contains": ["new entry"]
+    }
+  },
+  "max_tool_calls": 3,
+  "fake_script": [
+    {
+      "text": "读取 changelog。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "CHANGELOG.md"
+      }
+    },
+    {
+      "text": "修改 changelog。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "CHANGELOG.md",
+        "old_string": "old entry",
+        "new_string": "new entry"
+      }
+    },
+    "变更已记录。"
+  ]
+}

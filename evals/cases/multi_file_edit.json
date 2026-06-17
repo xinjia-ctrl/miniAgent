@@ -1,0 +1,55 @@
+{
+  "id": "multi_file_edit",
+  "description": "连续编辑两个文件",
+  "tags": ["edit", "multi-file"],
+  "prompt": "同时更新 a.txt 和 b.txt",
+  "permission_mode": "accept_edits",
+  "workspace_files": {
+    "a.txt": "old-a\n",
+    "b.txt": "old-b\n"
+  },
+  "expected_files": {
+    "a.txt": {
+      "contains": ["new-a"]
+    },
+    "b.txt": {
+      "contains": ["new-b"]
+    }
+  },
+  "max_tool_calls": 5,
+  "fake_script": [
+    {
+      "text": "读取 a。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "a.txt"
+      }
+    },
+    {
+      "text": "修改 a。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "a.txt",
+        "old_string": "old-a",
+        "new_string": "new-a"
+      }
+    },
+    {
+      "text": "读取 b。",
+      "tool": "read_file",
+      "input": {
+        "file_path": "b.txt"
+      }
+    },
+    {
+      "text": "修改 b。",
+      "tool": "edit_file",
+      "input": {
+        "file_path": "b.txt",
+        "old_string": "old-b",
+        "new_string": "new-b"
+      }
+    },
+    "两个文件都已更新。"
+  ]
+}

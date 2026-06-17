@@ -1,0 +1,19 @@
+{
+  "id": "run_test_command",
+  "description": "修改后运行测试命令",
+  "tags": ["shell", "test"],
+  "prompt": "运行测试命令",
+  "permission_mode": "bypass",
+  "max_tool_calls": 2,
+  "fake_script": [
+    {
+      "text": "运行一个快速测试命令。",
+      "tool": "shell",
+      "input": {
+        "command": "python --version",
+        "timeout_seconds": 10
+      }
+    },
+    "测试命令已运行。"
+  ]
+}
