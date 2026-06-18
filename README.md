@@ -20,6 +20,7 @@
 - 记忆：支持 `remember`、`forget_memory`、`recall_memory`
 - 审计：记录请求、模型响应、工具调用、权限决策、工具结果、错误和会话保存，并可生成 session 复盘报告
 - 评测：36 个 deterministic benchmark，支持 JSON/Markdown 报告和 baseline compare
+- Demo：提供可重放真实项目案例，展示读项目、修 bug、跑测试和生成报告的完整 session
 
 ## 技术栈
 
@@ -66,6 +67,7 @@ miniagent doctor
 miniagent audit show <session_id>
 python .\evals\runner.py --fake
 .\scripts\smoke.ps1
+.\scripts\make_demo.ps1
 ```
 
 ## 项目结构
@@ -91,6 +93,7 @@ miniagent/
   utils/            # 路径、文本、diff、subprocess、JSONL 等辅助
 tests/              # 单元和主循环测试
 evals/              # 可复现评测雏形
+demos/              # 可重放真实项目 Demo
 scripts/smoke.ps1   # 冒烟脚本
 ```
 
