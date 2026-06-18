@@ -21,6 +21,24 @@ def test_context_includes_tools_and_system_prompt(config, registry) -> None:
     assert any(tool["name"] == "read_file" for tool in request.tools)
 
 
+def test_context_includes_last_code_context(config, registry) -> None:
+    request = ContextBuilder().build(
+        messages=[user_text("hello")],
+        registry=registry,
+        config=config,
+        state={
+            "last_code_context": {
+                "title": "symbol_search:Service",
+                "items": ["src/service.py:3 class Service - 业务服务"],
+            }
+        },
+    )
+
+    assert "相关代码符号" in request.system_prompt
+    assert "src/service.py:3 class Service" in request.system_prompt
+    assert request.meta["usage"]["code"] > 0
+
+
 def test_context_trims_old_messages(config, registry) -> None:
     config.context_token_budget = 20
     messages = [user_text("x" * 100), user_text("last")]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from miniagent.tool_base import ToolRegistry
+from miniagent.tools import builtin_registry
 from fakes import EchoTool
 
 
@@ -21,3 +22,9 @@ def test_registry_rejects_duplicate_tool() -> None:
 
     with pytest.raises(ValueError):
         registry.register(EchoTool())
+
+
+def test_builtin_registry_includes_code_understanding_tools() -> None:
+    names = set(builtin_registry().names())
+
+    assert {"repo_map", "symbol_search", "code_index"}.issubset(names)

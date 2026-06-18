@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from miniagent.tool_base import ToolRegistry
+from miniagent.tools.code_understanding import CodeIndexTool, RepoMapTool, SymbolSearchTool
 from miniagent.tools.edit_file import EditFileTool
 from miniagent.tools.glob import GlobTool
 from miniagent.tools.grep import GrepTool
@@ -17,6 +18,9 @@ def register_builtin_tools(registry: ToolRegistry) -> None:
         ReadFileTool(),
         GlobTool(),
         GrepTool(),
+        RepoMapTool(),
+        SymbolSearchTool(),
+        CodeIndexTool(),
         WriteFileTool(),
         EditFileTool(),
         ShellTool(),

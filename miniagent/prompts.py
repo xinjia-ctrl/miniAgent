@@ -18,6 +18,7 @@ def build_system_prompt(
     git_status: str,
     todos: str = "",
     memories: str = "",
+    code_context: str = "",
 ) -> str:
     parts = [
         SYSTEM_PROMPT.strip(),
@@ -31,4 +32,6 @@ def build_system_prompt(
         parts.append("当前 Todo：\n" + todos)
     if memories:
         parts.append("相关记忆：\n" + memories)
+    if code_context:
+        parts.append("相关代码符号：\n" + code_context)
     return "\n\n".join(parts)

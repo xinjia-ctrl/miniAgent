@@ -10,11 +10,12 @@
 - Harness：默认使用 `FakeModelClient`，测试不依赖真实模型
 - 模型适配：支持最小 OpenAI-compatible chat completions 适配器
 - 工具协议：`BaseTool`、`ToolContext`、`ToolResult`、`ToolRegistry`
-- 内置工具：`read_file`、`glob`、`grep`、`write_file`、`edit_file`、`shell`、`todo`、`memory`、`plan`
+- 内置工具：`read_file`、`glob`、`grep`、`repo_map`、`symbol_search`、`code_index`、`write_file`、`edit_file`、`shell`、`todo`、`memory`、`plan`
 - 权限模式：`default`、`accept_edits`、`plan`、`bypass`
 - 文件安全：路径边界检查、敏感文件拒绝、读后写保护、mtime/size 漂移检测、diff 预览
 - Shell 安全：危险命令拦截、超时、stdout/stderr 捕获、输出截断
 - 上下文工程：系统提示、工作区状态、Git 状态、工具 schema、todo、记忆和历史裁剪
+- 代码理解：基于 AST/轻量文本扫描生成 repo map、symbol search 和结构化代码索引
 - 会话恢复：保存 messages、tool calls、tool results、permission decisions、todos、file reads
 - 记忆：支持 `remember`、`forget_memory`、`recall_memory`
 - 审计：记录请求、模型响应、工具调用、权限决策、工具结果、错误和会话保存，并可生成 session 复盘报告
@@ -78,6 +79,7 @@ miniagent/
   messages.py       # 结构化消息
   events.py         # EngineEvent
   context.py        # 上下文构建
+  code_index.py     # 结构化代码索引和符号检索
   permissions.py    # 权限决策
   tool_base.py      # 工具协议和注册表
   tool_runner.py    # 工具执行编排
@@ -128,7 +130,7 @@ miniagent doctor
 pytest
 ```
 
-当前测试覆盖消息序列化、FakeModel、工具注册、ToolRunner、文件读取、glob/grep、写入/编辑保护、shell 安全、权限模式、上下文、存储、记忆、审计、engine loop 和 CLI。
+当前测试覆盖消息序列化、FakeModel、工具注册、ToolRunner、文件读取、glob/grep、代码索引、写入/编辑保护、shell 安全、权限模式、上下文、存储、记忆、审计、engine loop 和 CLI。
 
 ## 评测说明
 

@@ -42,6 +42,7 @@ class ContextBuilder:
         compact_summary = state.get("compact_summary", {})
         platform_name = platform.platform()
         memory_context = self._format_memory_context(state)
+        code_context = self._format_code_context(state)
         system_prompt = build_system_prompt(
             cwd=config.cwd,
             platform=platform_name,
@@ -49,6 +50,7 @@ class ContextBuilder:
             git_status=git_status,
             todos=self._format_todos(state.get("todos", [])),
             memories=memory_context,
+            code_context=code_context,
         )
         tools = registry.tool_schemas()
         budget = ContextBudget.for_total(config.context_token_budget)
@@ -61,6 +63,7 @@ class ContextBuilder:
         )
         if state.get("compact_summary") != compact_summary:
             memory_context = self._format_memory_context(state)
+            code_context = self._format_code_context(state)
             system_prompt = build_system_prompt(
                 cwd=config.cwd,
                 platform=platform_name,
@@ -68,6 +71,7 @@ class ContextBuilder:
                 git_status=git_status,
                 todos=self._format_todos(state.get("todos", [])),
                 memories=memory_context,
+                code_context=code_context,
             )
         prompt_tokens = estimate_tokens(system_prompt)
         tools_tokens = estimate_tokens(json.dumps(tools, ensure_ascii=False))
@@ -75,15 +79,17 @@ class ContextBuilder:
             "\n".join([config.cwd, platform_name, config.permission_mode, git_status])
         )
         memory_tokens = estimate_tokens(memory_context)
+        code_tokens = estimate_tokens(code_context)
         memory_ids = self._memory_ids(state.get("memories", []))
         context_meta = {
             "cwd": config.cwd,
             "permission_mode": config.permission_mode,
             "budget": budget.as_dict(),
             "usage": {
-                "system": max(0, prompt_tokens - project_tokens - memory_tokens),
+                "system": max(0, prompt_tokens - project_tokens - memory_tokens - code_tokens),
                 "project": project_tokens,
                 "memory": memory_tokens,
+                "code": code_tokens,
                 "tools": tools_tokens,
                 "history": selection_meta["history_tokens"],
                 "tool": selection_meta["tool_tokens"],
@@ -308,3 +314,17 @@ class ContextBuilder:
         elif isinstance(summary, str) and summary:
             parts.append("历史摘要：\n" + summary)
         return "\n\n".join(parts)
+
+    @staticmethod
+    def _format_code_context(state: dict[str, Any]) -> str:
+        value = state.get("last_code_context")
+        if not isinstance(value, dict):
+            return ""
+        title = str(value.get("title") or "last_code_context")
+        raw_items = value.get("items", [])
+        if not isinstance(raw_items, list):
+            return ""
+        lines = [f"{title}:"]
+        for item in raw_items[:30]:
+            lines.append(f"- {item}")
+        return "\n".join(lines)
