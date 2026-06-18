@@ -8,7 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from miniagent.security.paths import sensitive_path_reason
-from miniagent.security.shell import ShellClassification, classify_shell_command
+from miniagent.security.shell import classify_shell_command
 
 
 class PermissionRule(BaseModel):

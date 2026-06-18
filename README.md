@@ -28,6 +28,7 @@
 - Pydantic v2
 - Typer
 - pytest / pytest-asyncio
+- Ruff
 
 ## 安装与启动
 
@@ -62,6 +63,7 @@ miniagent --provider openai-compatible --model gpt-4.1-mini --print "读取 READ
 
 ```powershell
 pytest
+ruff check . --no-cache
 pytest tests/test_engine.py
 miniagent doctor
 miniagent audit show <session_id>
@@ -94,6 +96,7 @@ miniagent/
 tests/              # 单元和主循环测试
 evals/              # 可复现评测雏形
 demos/              # 可重放真实项目 Demo
+docs/               # 架构、评测、发布和简历叙事文档
 scripts/smoke.ps1   # 冒烟脚本
 ```
 
@@ -127,10 +130,18 @@ miniagent doctor
 
 因此模型输出的工具调用必须经过 `ToolRunner` 和 `PermissionManager`，工具结果再以 `tool_result` 消息回灌给模型。测试优先使用 `FakeModelClient`，确保 agent loop 是确定性的。
 
+更多文档：
+
+- [架构说明](docs/architecture.md)
+- [评测方法](docs/eval_methodology.md)
+- [简历叙事](docs/resume_story.md)
+- [发布检查清单](docs/release_checklist.md)
+
 ## 测试说明
 
 ```powershell
 pytest
+ruff check . --no-cache
 ```
 
 当前测试覆盖消息序列化、FakeModel、工具注册、ToolRunner、文件读取、glob/grep、代码索引、写入/编辑保护、shell 安全、权限模式、上下文、存储、记忆、审计、engine loop 和 CLI。

@@ -38,3 +38,4 @@ demos/generated/
 *.md
 !README.md
 !**/README.md
+!docs/**/*.md
