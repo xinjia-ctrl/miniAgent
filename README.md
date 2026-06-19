@@ -2,6 +2,8 @@
 
 `miniAgent` 是一个从零实现的命令行 coding agent 学习项目。它复刻的是 Claude Code 类 coding agent 的核心架构思想：模型负责提出行动，runtime 负责上下文、工具执行、权限、安全、会话、审计和评测。
 
+当前版本：`0.1.0`。本地最终版状态见 [最终交付状态](docs/final_status.md)。
+
 ## 功能特性
 
 - CLI：支持 `miniagent --help`、`miniagent --print "问题"`、`miniagent doctor`
@@ -136,6 +138,8 @@ miniagent doctor
 - [评测方法](docs/eval_methodology.md)
 - [简历叙事](docs/resume_story.md)
 - [发布检查清单](docs/release_checklist.md)
+- [最终交付状态](docs/final_status.md)
+- [Release Notes](docs/release_notes.md)
 
 ## 测试说明
 
@@ -189,4 +193,4 @@ Shell 是最高风险工具。非交互 `--print` 下需要确认的命令会直
 
 ## 许可证
 
-当前仓库未声明许可证。
+本项目使用 [MIT License](LICENSE)。
