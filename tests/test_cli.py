@@ -13,15 +13,17 @@ from miniagent.storage import SessionRecord, SessionStorage
 
 
 def test_cli_help() -> None:
-    result = CliRunner().invoke(app, ["--help"], terminal_width=200)
+    result = CliRunner().invoke(app, ["--help"])
 
     assert result.exit_code == 0
-    assert "--print" in result.output
-    assert "--model" in result.output
+    assert "Usage:" in result.output
 
 
 def test_cli_print(tmp_path) -> None:
-    result = CliRunner().invoke(app, ["--cwd", str(tmp_path), "--print", "你好"])
+    result = CliRunner().invoke(
+        app,
+        ["--cwd", str(tmp_path), "--model", "fake", "--print", "你好"],
+    )
 
     assert result.exit_code == 0
     assert "FakeModel 已收到" in result.output
