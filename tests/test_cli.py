@@ -37,6 +37,67 @@ def test_cli_doctor(tmp_path) -> None:
     assert "audit_path" in result.output
 
 
+def test_cli_config_set_show_and_reset(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MINIAGENT_CONFIG_DIR", str(tmp_path / "user-config"))
+    runner = CliRunner()
+
+    configured = runner.invoke(
+        app,
+        [
+            "config",
+            "set",
+            "--provider",
+            "openai-compatible",
+            "--model",
+            "deepseek-v4-flash",
+            "--base-url",
+            "https://api.deepseek.com/chat/completions",
+            "--api-key-env",
+            "OPENAI_API_KEY",
+            "--permission-mode",
+            "accept_edits",
+        ],
+    )
+    shown = runner.invoke(app, ["config", "show", "--cwd", str(tmp_path)])
+    reset = runner.invoke(app, ["config", "reset"])
+
+    assert configured.exit_code == 0
+    assert "已保存用户配置" in configured.output
+    assert shown.exit_code == 0
+    assert "provider: openai-compatible" in shown.output
+    assert "model: deepseek-v4-flash" in shown.output
+    assert "api_key_env: OPENAI_API_KEY" in shown.output
+    assert "api_key_configured: false" in shown.output
+    assert reset.exit_code == 0
+    assert "已删除用户配置" in reset.output
+
+
+def test_cli_doctor_uses_saved_user_config(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MINIAGENT_CONFIG_DIR", str(tmp_path / "user-config"))
+    runner = CliRunner()
+    configured = runner.invoke(
+        app,
+        [
+            "config",
+            "set",
+            "--provider",
+            "openai-compatible",
+            "--model",
+            "deepseek-v4-flash",
+            "--base-url",
+            "https://api.deepseek.com/chat/completions",
+        ],
+    )
+
+    result = runner.invoke(app, ["doctor", "--cwd", str(tmp_path)])
+
+    assert configured.exit_code == 0
+    assert result.exit_code == 0
+    assert "provider: openai-compatible" in result.output
+    assert "model: deepseek-v4-flash" in result.output
+    assert "base_url: https://api.deepseek.com/chat/completions" in result.output
+
+
 def test_cli_context_inspect_last(tmp_path) -> None:
     storage = SessionStorage(tmp_path / ".miniagent")
     storage.save(

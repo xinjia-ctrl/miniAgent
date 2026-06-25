@@ -45,7 +45,71 @@ python -m miniagent --print "读取 README.md 并总结"
 
 默认模型是 `fake`，不需要 API key。
 
-使用 OpenAI-compatible 接口时：
+### 持久化配置 DeepSeek
+
+先将 DeepSeek API Key 永久保存到当前 Windows 用户环境变量。在 CMD 中执行：
+
+```cmd
+setx OPENAI_API_KEY "你的 DeepSeek API Key"
+```
+
+执行后关闭并重新打开终端。然后配置一次 miniAgent：
+
+```powershell
+miniagent config set `
+  --provider openai-compatible `
+  --model deepseek-v4-flash `
+  --base-url https://api.deepseek.com/chat/completions `
+  --api-key-env OPENAI_API_KEY `
+  --permission-mode accept_edits
+```
+
+配置保存在当前用户目录：
+
+```text
+~/.miniagent/config.json
+```
+
+配置文件只保存 API Key 的环境变量名，不保存密钥值。配置完成后，可以在任意项目目录直接启动：
+
+```powershell
+cd D:\your-project
+miniagent
+```
+
+检查当前项目最终生效的配置：
+
+```powershell
+miniagent config show
+miniagent doctor
+```
+
+如需让某个项目使用独立模型配置：
+
+```powershell
+miniagent config set `
+  --project `
+  --provider openai-compatible `
+  --model deepseek-v4-pro `
+  --base-url https://api.deepseek.com/chat/completions
+```
+
+项目配置写入 `.miniagent/config.json`，优先于用户配置。完整优先级为：
+
+```text
+命令行参数 > 项目配置 > 用户配置 > 环境变量 > 程序默认值
+```
+
+删除配置：
+
+```powershell
+miniagent config reset
+miniagent config reset --project
+```
+
+### 临时指定 OpenAI-compatible 接口
+
+不写入配置文件、只在当前命令使用时：
 
 ```powershell
 $env:OPENAI_API_KEY="你的密钥"
@@ -56,6 +120,8 @@ miniagent --provider openai-compatible --model gpt-4.1-mini --print "读取 READ
 
 - `MINIAGENT_PROVIDER`：默认 provider
 - `MINIAGENT_MODEL`：默认模型名
+- `MINIAGENT_PERMISSION_MODE`：默认权限模式
+- `MINIAGENT_API_KEY_ENV`：保存 API Key 的环境变量名
 - `OPENAI_BASE_URL`：OpenAI-compatible chat completions URL
 - `OPENAI_API_KEY`：API key
 

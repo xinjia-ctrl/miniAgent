@@ -44,20 +44,40 @@ class RuntimeContainer:
 def build_agent_config(
     *,
     cwd: str | Path | None = None,
-    provider: str = "fake",
-    model: str = "fake",
-    base_url: str = "https://api.openai.com/v1/chat/completions",
-    permission_mode: str = "default",
+    provider: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key_env: str | None = None,
+    permission_mode: str | None = None,
     non_interactive: bool = True,
     debug: bool = False,
 ) -> AgentConfig:
-    return default_config(
-        cwd=cwd,
-        model=ModelSettings(provider=provider, model=model, base_url=base_url),
-        permission_mode=permission_mode,
-        non_interactive=non_interactive,
-        debug=debug,
+    base = default_config(cwd=cwd)
+    model_values = base.model.model_dump()
+    effective_provider = provider
+    if effective_provider is None and model == "fake":
+        effective_provider = "fake"
+    elif effective_provider is None and model and base.model.provider == "fake":
+        effective_provider = "openai-compatible"
+    explicit_model_values = {
+        "provider": effective_provider,
+        "model": model,
+        "base_url": base_url,
+        "api_key_env": api_key_env,
+    }
+    model_values.update(
+        {key: value for key, value in explicit_model_values.items() if value is not None}
     )
+    values = base.model_dump()
+    values.update(
+        {
+            "model": ModelSettings.model_validate(model_values),
+            "permission_mode": permission_mode or base.permission_mode,
+            "non_interactive": non_interactive,
+            "debug": debug,
+        }
+    )
+    return AgentConfig.model_validate(values)
 
 
 def build_runtime_container(config: AgentConfig) -> RuntimeContainer:

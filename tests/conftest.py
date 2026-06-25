@@ -30,6 +30,11 @@ def tmp_path(request) -> Path:
         shutil.rmtree(path, ignore_errors=True)
 
 
+@pytest.fixture(autouse=True)
+def isolate_user_config(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MINIAGENT_CONFIG_DIR", str(tmp_path / "user-config"))
+
+
 @pytest.fixture()
 def workspace(tmp_path: Path) -> Path:
     (tmp_path / "README.md").write_text("# Demo\nhello agent\n", encoding="utf-8")

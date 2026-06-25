@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -204,4 +205,8 @@ class MiniAgentApplication:
             "audit_path": str(config.audit_path),
             "provider": config.model.provider,
             "model": config.model.model,
+            "base_url": config.model.base_url,
+            "api_key_env": config.model.api_key_env,
+            "api_key_configured": str(bool(os.environ.get(config.model.api_key_env))).lower(),
+            "permission_mode": config.permission_mode,
         }

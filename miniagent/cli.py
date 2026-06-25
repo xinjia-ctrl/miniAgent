@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +20,14 @@ from evals.runner import (
 from miniagent.audit_report import render_audit_report
 from miniagent.app import MiniAgentApplication
 from miniagent.bootstrap import build_agent_config
+from miniagent.config import (
+    PersistedSettings,
+    delete_persisted_settings,
+    load_persisted_settings,
+    project_config_path,
+    save_persisted_settings,
+    user_config_path,
+)
 from miniagent.engine import QueryEngine
 from miniagent.events import ASSISTANT_DELTA, DONE, ERROR, TOOL_ERROR, TOOL_RESULT
 from miniagent.memory import MemoryItem, MemoryRecallHit, MemoryScope, normalize_scope
@@ -33,6 +42,7 @@ tools_app = typer.Typer(help="查看已注册工具。")
 plugins_app = typer.Typer(help="管理本地插件。")
 evals_app = typer.Typer(help="运行和查看评测。")
 audit_app = typer.Typer(help="查看审计报告。")
+config_app = typer.Typer(help="管理持久化模型配置。")
 app.add_typer(context_app, name="context")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(changes_app, name="changes")
@@ -41,6 +51,7 @@ app.add_typer(tools_app, name="tools")
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(evals_app, name="evals")
 app.add_typer(audit_app, name="audit")
+app.add_typer(config_app, name="config")
 
 
 @app.callback(invoke_without_command=True)
@@ -49,17 +60,26 @@ def callback(
     print_text: Optional[str] = typer.Option(None, "--print", help="非交互执行一次请求。"),
     continue_session: bool = typer.Option(False, "--continue", help="继续最近一次会话。"),
     cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
-    permission_mode: str = typer.Option("default", "--permission-mode", help="权限模式。"),
-    model: str = typer.Option("fake", "--model", help="模型名称。fake 表示使用 FakeModelClient。"),
-    provider: str = typer.Option(
-        "fake",
+    permission_mode: Optional[str] = typer.Option(None, "--permission-mode", help="权限模式。"),
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        help="模型名称；省略时读取项目或用户配置。",
+    ),
+    provider: Optional[str] = typer.Option(
+        None,
         "--provider",
         help="模型 provider：fake、openai-compatible 或 anthropic-compatible。",
     ),
-    base_url: str = typer.Option(
-        "https://api.openai.com/v1/chat/completions",
+    base_url: Optional[str] = typer.Option(
+        None,
         "--base-url",
-        help="OpenAI-compatible chat completions URL。",
+        help="完整模型接口 URL；省略时读取项目或用户配置。",
+    ),
+    api_key_env: Optional[str] = typer.Option(
+        None,
+        "--api-key-env",
+        help="保存 API Key 的环境变量名。",
     ),
     debug: bool = typer.Option(False, "--debug", help="输出调试信息。"),
 ) -> None:
@@ -71,6 +91,7 @@ def callback(
         provider=provider,
         model=model,
         base_url=base_url,
+        api_key_env=api_key_env,
         permission_mode=permission_mode,
         non_interactive=print_text is not None,
         debug=debug,
@@ -86,13 +107,86 @@ def callback(
 @app.command()
 def doctor(
     cwd: Path = typer.Option(Path.cwd(), "--cwd", help="工作区目录。"),
-    model: str = typer.Option("fake", "--model", help="模型名称。"),
-    provider: str = typer.Option("fake", "--provider", help="模型 provider。"),
+    model: Optional[str] = typer.Option(None, "--model", help="模型名称。"),
+    provider: Optional[str] = typer.Option(None, "--provider", help="模型 provider。"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", help="完整模型接口 URL。"),
+    api_key_env: Optional[str] = typer.Option(None, "--api-key-env", help="API Key 环境变量名。"),
 ) -> None:
-    config = build_agent_config(cwd=cwd, provider=provider, model=model)
+    config = build_agent_config(
+        cwd=cwd,
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        api_key_env=api_key_env,
+    )
     application = MiniAgentApplication.from_config(config)
     for key, value in application.diagnostics().items():
         typer.echo(f"{key}: {value}")
+
+
+@config_app.command("set")
+def set_config(
+    provider: str = typer.Option(..., "--provider", help="模型 provider。"),
+    model: str = typer.Option(..., "--model", help="模型名称。"),
+    base_url: str = typer.Option(..., "--base-url", help="完整模型接口 URL。"),
+    api_key_env: str = typer.Option(
+        "OPENAI_API_KEY",
+        "--api-key-env",
+        help="保存 API Key 的环境变量名，不会保存密钥值。",
+    ),
+    permission_mode: str = typer.Option(
+        "accept_edits",
+        "--permission-mode",
+        help="默认权限模式。",
+    ),
+    project: bool = typer.Option(False, "--project", help="保存为当前项目配置。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="项目目录。"),
+) -> None:
+    target = project_config_path(cwd) if project else user_config_path()
+    existing = load_persisted_settings(target) or PersistedSettings()
+    settings = PersistedSettings.model_validate(
+        {
+            **existing.model_dump(exclude_none=True),
+            "provider": provider,
+            "model": model,
+            "base_url": base_url,
+            "api_key_env": api_key_env,
+            "permission_mode": permission_mode,
+        }
+    )
+    save_persisted_settings(target, settings)
+    scope = "项目" if project else "用户"
+    typer.echo(f"已保存{scope}配置：{target}")
+    typer.echo(f"API Key 请设置在环境变量：{api_key_env}")
+
+
+@config_app.command("show")
+def show_config(
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="项目目录。"),
+) -> None:
+    config = build_agent_config(cwd=cwd)
+    key_name = config.model.api_key_env
+    typer.echo(f"provider: {config.model.provider}")
+    typer.echo(f"model: {config.model.model}")
+    typer.echo(f"base_url: {config.model.base_url}")
+    typer.echo(f"api_key_env: {key_name}")
+    typer.echo(f"api_key_configured: {str(bool(os.environ.get(key_name))).lower()}")
+    typer.echo(f"permission_mode: {config.permission_mode}")
+    typer.echo(f"user_config: {user_config_path()}")
+    typer.echo(f"project_config: {project_config_path(cwd)}")
+
+
+@config_app.command("reset")
+def reset_config(
+    project: bool = typer.Option(False, "--project", help="删除当前项目配置。"),
+    cwd: Path = typer.Option(Path.cwd(), "--cwd", help="项目目录。"),
+) -> None:
+    target = project_config_path(cwd) if project else user_config_path()
+    scope = "项目" if project else "用户"
+    if delete_persisted_settings(target):
+        typer.echo(f"已删除{scope}配置：{target}")
+        return
+    typer.echo(f"{scope}配置不存在：{target}")
 
 
 @context_app.command("inspect")
