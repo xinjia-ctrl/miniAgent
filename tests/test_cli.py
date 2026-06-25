@@ -13,7 +13,7 @@ from miniagent.storage import SessionRecord, SessionStorage
 
 
 def test_cli_help() -> None:
-    result = CliRunner().invoke(app, ["--help"])
+    result = CliRunner().invoke(app, ["--help"], terminal_width=200)
 
     assert result.exit_code == 0
     assert "--print" in result.output
